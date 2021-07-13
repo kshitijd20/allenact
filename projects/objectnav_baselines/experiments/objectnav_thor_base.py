@@ -314,7 +314,7 @@ class ObjectNavThorBaseConfig(ObjectNavBaseConfig, ABC):
                 seeds=seeds,
                 deterministic_cudnn=deterministic_cudnn,
                 include_expert_sensor=False,
-                allow_oversample=False,
+                allow_oversample=True,
             )
             res["env_args"]["all_metadata_available"] = False
             res["rewards_config"] = {**res["rewards_config"], "shaping_weight": 0}
