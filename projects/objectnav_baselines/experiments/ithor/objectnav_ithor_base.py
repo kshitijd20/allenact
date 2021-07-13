@@ -46,6 +46,7 @@ class ObjectNaviThorBaseConfigDebug(ObjectNavThorBaseConfig, ABC):
 
     TRAIN_DATASET_DIR = os.path.join(os.getcwd(), "datasets/ithor-objectnav/debug/")
     VAL_DATASET_DIR = os.path.join(os.getcwd(), "datasets/ithor-objectnav/debug/")
+    TEST_DATASET_DIR = os.path.join(os.getcwd(), "datasets/ithor-objectnav/debug/")
 
     TARGET_TYPES = tuple(
         sorted(
