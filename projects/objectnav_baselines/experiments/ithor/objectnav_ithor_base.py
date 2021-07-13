@@ -44,8 +44,8 @@ class ObjectNaviThorBaseConfigDebug(ObjectNavThorBaseConfig, ABC):
 
     DEFAULT_NUM_TRAIN_PROCESSES = 40 if torch.cuda.is_available() else 1
 
-    TRAIN_DATASET_DIR = os.path.join(os.getcwd(), "datasets/ithor-objectnav/train/debug")
-    VAL_DATASET_DIR = os.path.join(os.getcwd(), "datasets/ithor-objectnav/val/debug")
+    TRAIN_DATASET_DIR = os.path.join(os.getcwd(), "datasets/ithor-objectnav/debug/episodes")
+    VAL_DATASET_DIR = os.path.join(os.getcwd(), "datasets/ithor-objectnav/debug/episodes")
 
     TARGET_TYPES = tuple(
         sorted(
