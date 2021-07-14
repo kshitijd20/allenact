@@ -521,11 +521,9 @@ class OnPolicyRLEngine(object):
         print(" actor_critic_output are ", actor_critic_output)
         print("---------------------------------------------------------------")
 
-        print(" memory are ", memory)
+        print(" memory shape is  ", memory['rnn'].shape)
         print("---------------------------------------------------------------")
 
-        print(" step_observation_temp are ", step_observation_temp)
-        print("---------------------------------------------------------------")
 
         print(" self.actor_critic.action_space are ", self.actor_critic.action_space)
         print("---------------------------------------------------------------")
@@ -542,9 +540,6 @@ class OnPolicyRLEngine(object):
         outputs: List[RLStepResult] = self.vector_tasks.step(
             su.action_list(self.actor_critic.action_space, flat_actions)
         )
-
-        print(" outputs are ", outputs)
-        print("---------------------------------------------------------------")
         # Save after task completion metrics
         for step_result in outputs:
             if (
@@ -581,7 +576,8 @@ class OnPolicyRLEngine(object):
         )  # [sampler, 1]
 
         npaused, keep, batch = self.remove_paused(observations)
-
+        print(" batch is ", batch)
+        print("------------------------------------------------------")
         # TODO self.probe(...) can be useful for debugging (we might want to control it from main?)
         # self.probe(dones, npaused)
 
