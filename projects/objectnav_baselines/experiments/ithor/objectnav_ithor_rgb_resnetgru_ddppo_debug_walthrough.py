@@ -33,7 +33,7 @@ from allenact_plugins.ithor_plugin.ithor_sensors import (
 import os
 import torch
 
-def test_pretrained_objectnav_walkthrough_mapping_agent(self, tmpdir):
+def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
 
     print("Creating sampler")
     walkthrough_task_sampler = ObjectNaviThorRGBPPOExperimentConfig.make_sampler_fn(
