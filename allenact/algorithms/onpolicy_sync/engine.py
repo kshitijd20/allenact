@@ -512,10 +512,23 @@ class OnPolicyRLEngine(object):
     def collect_rollout_step(
         self, rollouts: RolloutStorage, visualizer=None, dist_wrapper_class=None
     ) -> int:
-        actions, actor_critic_output, memory, _ = self.act(
+        actions, actor_critic_output, memory, step_observation_temp = self.act(
             rollouts=rollouts, dist_wrapper_class=dist_wrapper_class
         )
+        print(" actions are ",actions)
+        print("---------------------------------------------------------------")
 
+        print(" actor_critic_output are ", actor_critic_output)
+        print("---------------------------------------------------------------")
+
+        print(" memory are ", memory)
+        print("---------------------------------------------------------------")
+
+        print(" step_observation_temp are ", step_observation_temp)
+        print("---------------------------------------------------------------")
+
+        print(" self.actor_critic.action_space are ", self.actor_critic.action_space)
+        print("---------------------------------------------------------------")
         # Flatten actions
         flat_actions = su.flatten(self.actor_critic.action_space, actions)
 
@@ -530,6 +543,8 @@ class OnPolicyRLEngine(object):
             su.action_list(self.actor_critic.action_space, flat_actions)
         )
 
+        print(" outputs are ", outputs)
+        print("---------------------------------------------------------------")
         # Save after task completion metrics
         for step_result in outputs:
             if (
@@ -1766,10 +1781,10 @@ class OnPolicyWalkthrough(OnPolicyRLEngine):
         while self.num_active_samplers > 0:
             frames += self.num_active_samplers
             print("What are frames ", frames)
-            return 0
             self.collect_rollout_step(
                 rollouts, visualizer=visualizer, dist_wrapper_class=dist_wrapper_class
             )
+            return 0
             steps += 1
 
             if steps % rollout_steps == 0:
