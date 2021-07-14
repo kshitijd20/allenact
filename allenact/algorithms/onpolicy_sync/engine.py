@@ -577,7 +577,7 @@ class OnPolicyRLEngine(object):
 
         npaused, keep, batch = self.remove_paused(observations)
         print(" Length of batch is ", len(batch))
-        print(batch[0][0])
+        print(batch['rgb_lowres'].shape, batch['rgb_lowres'][0,...].max(),batch['rgb_lowres'][0,...].min())
         print("------------------------------------------------------")
         # TODO self.probe(...) can be useful for debugging (we might want to control it from main?)
         # self.probe(dones, npaused)
@@ -1717,7 +1717,7 @@ class OnPolicyWalkthrough(OnPolicyRLEngine):
         rollout_steps: int = 100,
         visualizer: Optional[VizSuite] = None,
         update_secs: float = 20.0,
-        verbose: bool = False,
+        verbose: bool = True,
     ) -> LoggingPackage:
         assert self.actor_critic is not None, "called run_eval with no actor_critic"
 
@@ -1781,7 +1781,6 @@ class OnPolicyWalkthrough(OnPolicyRLEngine):
             self.collect_rollout_step(
                 rollouts, visualizer=visualizer, dist_wrapper_class=dist_wrapper_class
             )
-            return 0
             steps += 1
 
             if steps % rollout_steps == 0:
