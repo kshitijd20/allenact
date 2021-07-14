@@ -429,8 +429,22 @@ def walkthrough():
     ptitle("Master: {}".format("Training" if args.eval is None else "Evaluation"))
 
     cfg, srcs = load_config(args)
-    print(cfg)
-    
-
+    OnPolicyRunner(
+        config=cfg,
+        output_dir=args.output_dir,
+        loaded_config_src_files=srcs,
+        seed=args.seed,
+        mode="test",
+        deterministic_cudnn=args.deterministic_cudnn,
+        deterministic_agents=args.deterministic_agents,
+        extra_tag=args.extra_tag,
+        disable_tensorboard=args.disable_tensorboard,
+        disable_config_saving=args.disable_config_saving,
+    ).start_walkthrough(
+        checkpoint_path_dir_or_pattern=args.checkpoint,
+        approx_ckpt_step_interval=args.approx_ckpt_step_interval,
+        max_sampler_processes_per_worker=args.max_sampler_processes_per_worker,
+        inference_expert=args.test_expert,
+    )
 if __name__ == "__main__":
     main()

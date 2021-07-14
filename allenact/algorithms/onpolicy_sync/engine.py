@@ -71,7 +71,7 @@ from allenact.utils.viz_utils import VizSuite
 TRAIN_MODE_STR = "train"
 VALID_MODE_STR = "valid"
 TEST_MODE_STR = "test"
-
+WALKTHROUGH_MODE_STR = "walkthrough"
 
 class OnPolicyRLEngine(object):
     """The reinforcement learning primary controller.
@@ -1410,6 +1410,310 @@ class OnPolicyInference(OnPolicyRLEngine):
         ckpt = self.checkpoint_load(checkpoint_file_path)
         total_steps = cast(int, ckpt["total_steps"])
 
+        rollouts = RolloutStorage(
+            num_steps=rollout_steps,
+            num_samplers=self.num_samplers,
+            actor_critic=cast(ActorCriticModel, self.actor_critic),
+        )
+
+        if visualizer is not None:
+            assert visualizer.empty()
+
+        num_paused = self.initialize_rollouts(rollouts, visualizer=visualizer)
+        assert num_paused == 0, f"{num_paused} tasks paused when initializing eval"
+
+        num_tasks = sum(
+            self.vector_tasks.command(
+                "sampler_attr", ["length"] * self.num_active_samplers
+            )
+        ) + (  # We need to add this as the first tasks have already been sampled
+            self.num_active_samplers
+        )
+        # get_logger().debug(
+        #     "worker {} number of tasks {}".format(self.worker_id, num_tasks)
+        # )
+        steps = 0
+
+        self.actor_critic.eval()
+
+        last_time: float = time.time()
+        init_time: float = last_time
+        frames: int = 0
+        if verbose:
+            get_logger().info(
+                f"[{self.mode}] worker {self.worker_id}: running evaluation on {num_tasks} tasks."
+            )
+
+        if self.enforce_expert:
+            dist_wrapper_class = partial(
+                TeacherForcingDistr,
+                action_space=self.actor_critic.action_space,
+                num_active_samplers=None,
+                approx_steps=None,
+                teacher_forcing=None,
+                tracking_info=None,
+                always_enforce=True,
+            )
+        else:
+            dist_wrapper_class = None
+
+        logging_pkg = LoggingPackage(mode=self.mode, training_steps=total_steps)
+        while self.num_active_samplers > 0:
+            frames += self.num_active_samplers
+            self.collect_rollout_step(
+                rollouts, visualizer=visualizer, dist_wrapper_class=dist_wrapper_class
+            )
+            steps += 1
+
+            if steps % rollout_steps == 0:
+                rollouts.after_update()
+
+            cur_time = time.time()
+            if self.num_active_samplers == 0 or cur_time - last_time >= update_secs:
+                self.aggregate_task_metrics(logging_pkg=logging_pkg)
+
+                if verbose:
+                    npending: int
+                    lengths: List[int]
+                    if self.num_active_samplers > 0:
+                        lengths = self.vector_tasks.command(
+                            "sampler_attr", ["length"] * self.num_active_samplers,
+                        )
+                        npending = sum(lengths)
+                    else:
+                        lengths = []
+                        npending = 0
+                    est_time_to_complete = (
+                        "{:.2f}".format(
+                            (
+                                (cur_time - init_time)
+                                * (npending / (num_tasks - npending))
+                                / 60
+                            )
+                        )
+                        if npending != num_tasks
+                        else "???"
+                    )
+                    get_logger().info(
+                        f"[{self.mode}] worker {self.worker_id}:"
+                        f" {frames / (cur_time - init_time):.1f} fps,"
+                        f" {npending}/{num_tasks} tasks pending ({lengths})."
+                        f" ~{est_time_to_complete} min. to complete."
+                    )
+                    if logging_pkg.num_non_empty_metrics_dicts_added != 0:
+                        get_logger().info(
+                            ", ".join(
+                                [
+                                    f"[{self.mode}] worker {self.worker_id}:"
+                                    f" num_{self.mode}_tasks_complete {logging_pkg.num_non_empty_metrics_dicts_added}",
+                                    *[
+                                        f"{k} {v:.3g}"
+                                        for k, v in logging_pkg.metrics_tracker.means().items()
+                                    ],
+                                ]
+                            )
+                        )
+
+                    last_time = cur_time
+
+        get_logger().info(
+            "worker {}: {} complete, all task samplers paused".format(
+                self.mode, self.worker_id
+            )
+        )
+
+        self.vector_tasks.resume_all()
+        self.vector_tasks.set_seeds(self.worker_seeds(self.num_samplers, self.seed))
+        self.vector_tasks.reset_all()
+
+        self.aggregate_task_metrics(logging_pkg=logging_pkg)
+
+        logging_pkg.viz_data = (
+            visualizer.read_and_reset() if visualizer is not None else None
+        )
+        logging_pkg.checkpoint_file_name = checkpoint_file_path
+
+        return logging_pkg
+
+    @staticmethod
+    def skip_to_latest(checkpoints_queue: mp.Queue, command: Optional[str], data):
+        assert (
+            checkpoints_queue is not None
+        ), "Attempting to process checkpoints queue but this queue is `None`."
+        cond = True
+        while cond:
+            sentinel = ("skip.AUTO.sentinel", time.time())
+            checkpoints_queue.put(
+                sentinel
+            )  # valid since a single valid process is the only consumer
+            forwarded = False
+            while not forwarded:
+                new_command: Optional[str]
+                new_data: Any
+                (
+                    new_command,
+                    new_data,
+                ) = checkpoints_queue.get()  # block until next command arrives
+                if new_command == command:
+                    data = new_data
+                elif new_command == sentinel[0]:
+                    assert (
+                        new_data == sentinel[1]
+                    ), "wrong sentinel found: {} vs {}".format(new_data, sentinel[1])
+                    forwarded = True
+                else:
+                    raise ValueError(
+                        "Unexpected command {} with data {}".format(
+                            new_command, new_data
+                        )
+                    )
+            time.sleep(1)
+            cond = not checkpoints_queue.empty()
+        return data
+
+    def process_checkpoints(self):
+        assert (
+            self.mode != TRAIN_MODE_STR
+        ), "process_checkpoints only to be called from a valid or test instance"
+
+        assert (
+            self.checkpoints_queue is not None
+        ), "Attempting to process checkpoints queue but this queue is `None`."
+
+        visualizer: Optional[VizSuite] = None
+
+        finalized = False
+        try:
+            while True:
+                command: Optional[str]
+                ckp_file_path: Any
+                (
+                    command,
+                    ckp_file_path,
+                ) = self.checkpoints_queue.get()  # block until first command arrives
+                # get_logger().debug(
+                #     "{} {} command {} data {}".format(
+                #         self.mode, self.worker_id, command, data
+                #     )
+                # )
+
+                if command == "eval":
+                    if self.num_samplers > 0:
+                        if self.mode == VALID_MODE_STR:
+                            # skip to latest using
+                            # 1. there's only consumer in valid
+                            # 2. there's no quit/exit/close message issued by runner nor trainer
+                            ckp_file_path = self.skip_to_latest(
+                                checkpoints_queue=self.checkpoints_queue,
+                                command=command,
+                                data=ckp_file_path,
+                            )
+
+                        if (
+                            visualizer is None
+                            and self.machine_params.visualizer is not None
+                        ):
+                            visualizer = self.machine_params.visualizer
+
+                        eval_package = self.run_eval(
+                            checkpoint_file_path=ckp_file_path,
+                            visualizer=visualizer,
+                            verbose=True,
+                            update_secs=20 if self.mode == TEST_MODE_STR else 5 * 60,
+                        )
+
+                        self.results_queue.put(eval_package)
+
+                        if self.is_distributed:
+                            dist.barrier()
+                    else:
+                        self.results_queue.put(
+                            LoggingPackage(mode=self.mode, training_steps=None,)
+                        )
+                elif command in ["quit", "exit", "close"]:
+                    finalized = True
+                    break
+                else:
+                    raise NotImplementedError()
+        except KeyboardInterrupt:
+            get_logger().info(
+                "KeyboardInterrupt. Terminating {} worker {}".format(
+                    self.mode, self.worker_id
+                )
+            )
+        except Exception:
+            get_logger().error(
+                "Encountered Exception. Terminating {} worker {}".format(
+                    self.mode, self.worker_id
+                )
+            )
+            get_logger().error(traceback.format_exc())
+        finally:
+            if finalized:
+                if self.mode == TEST_MODE_STR:
+                    self.results_queue.put(("test_stopped", 0))
+                get_logger().info(
+                    "{} worker {} complete".format(self.mode, self.worker_id)
+                )
+            else:
+                if self.mode == TEST_MODE_STR:
+                    self.results_queue.put(("test_stopped", self.worker_id + 1))
+            self.close(verbose=self.mode == TEST_MODE_STR)
+
+class OnPolicyWalkthrough(OnPolicyRLEngine):
+    def __init__(
+        self,
+        config: ExperimentConfig,
+        results_queue: mp.Queue,  # to output aggregated results
+        checkpoints_queue: mp.Queue,  # to write/read (trainer/evaluator) ready checkpoints
+        checkpoints_dir: str = "",
+        mode: str = "valid",  # or "test"
+        seed: Optional[int] = None,
+        deterministic_cudnn: bool = False,
+        mp_ctx: Optional[BaseContext] = None,
+        device: Union[str, torch.device, int] = "cpu",
+        deterministic_agents: bool = False,
+        worker_id: int = 0,
+        num_workers: int = 1,
+        distributed_port: int = 0,
+        enforce_expert: bool = False,
+        **kwargs,
+    ):
+        super().__init__(
+            experiment_name="",
+            config=config,
+            results_queue=results_queue,
+            checkpoints_queue=checkpoints_queue,
+            checkpoints_dir=checkpoints_dir,
+            mode=mode,
+            seed=seed,
+            deterministic_cudnn=deterministic_cudnn,
+            mp_ctx=mp_ctx,
+            deterministic_agents=deterministic_agents,
+            device=device,
+            worker_id=worker_id,
+            num_workers=num_workers,
+            distributed_port=distributed_port,
+            **kwargs,
+        )
+
+        self.enforce_expert = enforce_expert
+
+    def run_eval(
+        self,
+        checkpoint_file_path: str,
+        rollout_steps: int = 100,
+        visualizer: Optional[VizSuite] = None,
+        update_secs: float = 20.0,
+        verbose: bool = False,
+    ) -> LoggingPackage:
+        assert self.actor_critic is not None, "called run_eval with no actor_critic"
+
+        print("Loading checkpoints")
+        ckpt = self.checkpoint_load(checkpoint_file_path)
+        total_steps = cast(int, ckpt["total_steps"])
+        print("Loaded checkpoints")
+        return 0
         rollouts = RolloutStorage(
             num_steps=rollout_steps,
             num_samplers=self.num_samplers,

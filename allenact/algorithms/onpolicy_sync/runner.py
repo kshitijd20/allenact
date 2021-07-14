@@ -27,6 +27,7 @@ from setproctitle import setproctitle as ptitle
 from allenact.algorithms.onpolicy_sync.engine import (
     OnPolicyTrainer,
     OnPolicyInference,
+    OnPolicyWalkthrough,
     TRAIN_MODE_STR,
     TEST_MODE_STR,
     OnPolicyRLEngine,
@@ -328,6 +329,20 @@ class OnPolicyRunner(object):
             OnPolicyRunner.init_process("Test", id, to_close_on_termination=test)
             test.process_checkpoints()  # gets checkpoints via queue
 
+    @staticmethod
+    def walkthrough_loop(id: int = 0, *engine_args, **engine_kwargs):
+        engine_kwargs["mode"] = "valid"
+        engine_kwargs["worker_id"] = id
+        get_logger().info("valid {} args {}".format(id, engine_kwargs))
+
+        valid = OnPolicyRunner.init_worker(
+            engine_class=OnPolicyWalkthrough, args=engine_args, kwargs=engine_kwargs
+        )
+        if valid is not None:
+            OnPolicyRunner.init_process("Valid", id, to_close_on_termination=valid)
+            valid.process_checkpoints()
+
+    @staticmethod
     def _initialize_start_train_or_start_test(self):
         self._is_closed = False
 
@@ -534,6 +549,88 @@ class OnPolicyRunner(object):
 
         get_logger().info(
             "Started {} test processes".format(len(self.processes[TEST_MODE_STR]))
+        )
+
+        checkpoint_paths = self.get_checkpoint_files(
+            checkpoint_path_dir_or_pattern=checkpoint_path_dir_or_pattern,
+            approx_ckpt_step_interval=approx_ckpt_step_interval,
+        )
+        steps = [self.step_from_checkpoint(cp) for cp in checkpoint_paths]
+
+        get_logger().info("Running test on {} steps {}".format(len(steps), steps))
+
+        for checkpoint_path in checkpoint_paths:
+            # Make all testers work on each checkpoint
+            for tester_it in range(num_testers):
+                self.queues["checkpoints"].put(("eval", checkpoint_path))
+
+        # Signal all testers to terminate cleanly
+        for _ in range(num_testers):
+            self.queues["checkpoints"].put(("quit", None))
+
+        metrics_dir = self.metric_path(self.local_start_time_str)
+        os.makedirs(metrics_dir, exist_ok=True)
+        suffix = "__test_{}".format(self.local_start_time_str)
+        metrics_file_path = os.path.join(metrics_dir, "metrics" + suffix + ".json")
+
+        get_logger().info("Saving test metrics in {}".format(metrics_file_path))
+
+        # Check output file can be written
+        with open(metrics_file_path, "w") as f:
+            json.dump([], f, indent=4, sort_keys=True, cls=NumpyJSONEncoder)
+
+        return self.log_and_close(
+            start_time_str=self.checkpoint_start_time_str(checkpoint_paths[0]),
+            nworkers=num_testers,
+            test_steps=steps,
+            metrics_file=metrics_file_path,
+        )
+
+    def start_walkthrough(
+        self,
+        checkpoint_path_dir_or_pattern: str,
+        approx_ckpt_step_interval: Optional[Union[float, int]] = None,
+        max_sampler_processes_per_worker: Optional[int] = None,
+        inference_expert: bool = False,
+    ) -> List[Dict]:
+        self.extra_tag += (
+            "__" * (len(self.extra_tag) > 0) + "enforced_walkthrough_expert"
+        ) * inference_expert
+        self._initialize_start_train_or_start_test()
+
+        devices = self.worker_devices(TEST_MODE_STR)
+        self.init_visualizer(TEST_MODE_STR)
+        num_testers = len(devices)
+        num_testers = 1
+        distributed_port = 0
+        if num_testers > 1:
+            distributed_port = find_free_port()
+
+        for tester_it in range(num_testers):
+            test: BaseProcess = self.mp_ctx.Process(
+                target=self.walkthrough_loop,
+                args=(tester_it,),
+                kwargs=dict(
+                    config=self.config,
+                    results_queue=self.queues["results"],
+                    checkpoints_queue=self.queues["checkpoints"],
+                    seed=12345,  # TODO allow same order for randomly sampled tasks? Is this any useful anyway?
+                    deterministic_cudnn=self.deterministic_cudnn,
+                    deterministic_agents=self.deterministic_agents,
+                    mp_ctx=self.mp_ctx,
+                    num_workers=num_testers,
+                    device=devices[tester_it],
+                    max_sampler_processes_per_worker=max_sampler_processes_per_worker,
+                    distributed_port=distributed_port,
+                    enforce_expert=inference_expert,
+                ),
+            )
+
+            test.start()
+            self.processes[TEST_MODE_STR].append(test)
+
+        get_logger().info(
+            "Started {} walkthrough processes".format(len(self.processes[TEST_MODE_STR]))
         )
 
         checkpoint_paths = self.get_checkpoint_files(
