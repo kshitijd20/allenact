@@ -35,14 +35,6 @@ import torch
 
 def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
 
-    print("Creating sampler")
-    exp_config = ObjectNaviThorRGBPPOExperimentConfig()
-    sampler_args = exp_config.valid_task_sampler_args(process_ind = 0,total_processes=1)
-
-    walkthrough_task_sampler = exp_config.make_sampler_fn(sampler_args)
-    print("Created sampler")
-    print("------------------------------------------------------------------------")
-
     ckpt_path = os.path.join(
         tmpdir, "exp_Objectnav-iTHOR-RGB-ResNetGRU-DDPPO-Debug__stage_00__steps_000000163840.pt"
     )
@@ -54,6 +46,16 @@ def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
 
     print("Loaded checkpoint")
     print("------------------------------------------------------------------------")
+
+    print("Creating sampler")
+    exp_config = ObjectNaviThorRGBPPOExperimentConfig()
+    sampler_args = exp_config.valid_task_sampler_args(process_ind = 0,total_processes=1)
+
+    walkthrough_task_sampler = exp_config.make_sampler_fn(sampler_args)
+    print("Created sampler")
+    print("------------------------------------------------------------------------")
+
+
 
     print("Creating rollout storage")
     rollout_storage = RolloutStorage(
