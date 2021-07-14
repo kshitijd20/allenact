@@ -331,7 +331,7 @@ class OnPolicyRunner(object):
 
     @staticmethod
     def walkthrough_loop(id: int = 0, *engine_args, **engine_kwargs):
-        engine_kwargs["mode"] = "valid"
+        engine_kwargs["mode"] = "test"
         engine_kwargs["worker_id"] = id
         get_logger().info("valid {} args {}".format(id, engine_kwargs))
 
@@ -339,7 +339,7 @@ class OnPolicyRunner(object):
             engine_class=OnPolicyWalkthrough, args=engine_args, kwargs=engine_kwargs
         )
         if valid is not None:
-            OnPolicyRunner.init_process("Valid", id, to_close_on_termination=valid)
+            OnPolicyRunner.init_process("Test", id, to_close_on_termination=valid)
             valid.process_checkpoints()
 
     @staticmethod
