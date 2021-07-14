@@ -36,11 +36,9 @@ import torch
 def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
 
     print("Creating sampler")
-    walkthrough_task_sampler = ObjectNaviThorRGBPPOExperimentConfig.make_sampler_fn(
-        stage="valid",
-        seed=2,
-        x_display= None,
-    )
+    sampler_args = ObjectNaviThorRGBPPOExperimentConfig.valid_task_sampler_args(process_ind = 0,total_processes=1)
+
+    walkthrough_task_sampler = ObjectNaviThorRGBPPOExperimentConfig.make_sampler_fn(sampler_args)
     print("Created sampler")
     print("------------------------------------------------------------------------")
 
