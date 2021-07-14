@@ -521,7 +521,7 @@ class OnPolicyRLEngine(object):
         print(" actor_critic_output are ", actor_critic_output)
         print("---------------------------------------------------------------")
 
-        print(" memory shape is  ", memory['rnn'].shape)
+        print(" memory shape is  ", memory['rnn'][0].shape)
         print("---------------------------------------------------------------")
 
 
