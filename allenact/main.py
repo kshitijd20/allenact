@@ -419,5 +419,18 @@ def main():
         )
 
 
+def walkthrough():
+    args = get_args()
+
+    init_logging(args.log_level)
+
+    get_logger().info("Running with args {}".format(args))
+
+    ptitle("Master: {}".format("Training" if args.eval is None else "Evaluation"))
+
+    cfg, srcs = load_config(args)
+    print(cfg)
+    
+
 if __name__ == "__main__":
     main()
