@@ -342,7 +342,6 @@ class OnPolicyRunner(object):
             OnPolicyRunner.init_process("Test", id, to_close_on_termination=valid)
             valid.process_checkpoints()
 
-    @staticmethod
     def _initialize_start_train_or_start_test(self):
         self._is_closed = False
 
