@@ -12,7 +12,6 @@ from projects.objectnav_baselines.experiments.objectnav_mixin_resnetgru import (
     ObjectNavMixInResNetGRUConfig,
 )
 
-
 class ObjectNaviThorRGBPPOExperimentConfig(
     ObjectNaviThorBaseConfigDebug, ObjectNavMixInPPOConfigDebug, ObjectNavMixInResNetGRUConfig,
 ):

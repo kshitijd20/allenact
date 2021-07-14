@@ -1713,13 +1713,14 @@ class OnPolicyWalkthrough(OnPolicyRLEngine):
         ckpt = self.checkpoint_load(checkpoint_file_path)
         total_steps = cast(int, ckpt["total_steps"])
         print("Loaded checkpoints")
-        return 0
+        print("--------------------------------------------------------------------")
         rollouts = RolloutStorage(
             num_steps=rollout_steps,
             num_samplers=self.num_samplers,
             actor_critic=cast(ActorCriticModel, self.actor_critic),
         )
-
+        print("what is roll out", rollouts)
+        print("--------------------------------------------------------------------")
         if visualizer is not None:
             assert visualizer.empty()
 
@@ -1737,7 +1738,7 @@ class OnPolicyWalkthrough(OnPolicyRLEngine):
         #     "worker {} number of tasks {}".format(self.worker_id, num_tasks)
         # )
         steps = 0
-
+        print("number of tasks is ", num_tasks)
         self.actor_critic.eval()
 
         last_time: float = time.time()
@@ -1764,6 +1765,8 @@ class OnPolicyWalkthrough(OnPolicyRLEngine):
         logging_pkg = LoggingPackage(mode=self.mode, training_steps=total_steps)
         while self.num_active_samplers > 0:
             frames += self.num_active_samplers
+            print("What are frames ", frames)
+            return 0
             self.collect_rollout_step(
                 rollouts, visualizer=visualizer, dist_wrapper_class=dist_wrapper_class
             )
