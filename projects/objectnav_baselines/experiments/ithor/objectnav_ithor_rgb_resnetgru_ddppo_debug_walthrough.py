@@ -33,7 +33,8 @@ from allenact.algorithms.onpolicy_sync.storage import RolloutStorage
 from allenact.utils.tensor_utils import batch_observations
 from allenact.base_abstractions.misc import Memory, ActorCriticOutput
 from allenact.base_abstractions.experiment_config import ExperimentConfig, MachineParams
-
+from allenact.base_abstractions.preprocessor import SensorPreprocessorGraph
+from allenact.base_abstractions.sensor import SensorSuite, ExpertActionSensor
 import compress_pickle
 import numpy as np
 
@@ -48,10 +49,44 @@ import torch
 DEFAULT_VALID_GPU_IDS = (torch.cuda.device_count() - 1,)
 def get_model(config):
     mode = "valid"
-    machine_params = config.machine_params(mode=mode)
+
+    nprocesses = 1
+    devices = (
+        [torch.device("cpu")]
+        if not torch.cuda.is_available()
+        else DEFAULT_VALID_GPU_IDS
+    )
+
+
+    sensors = [*config.SENSORS]
+    if mode != "train":
+        sensors = [s for s in sensors if not isinstance(s, ExpertActionSensor)]
+
+    sensor_preprocessor_graph = (
+        SensorPreprocessorGraph(
+            source_observation_spaces=SensorSuite(sensors).observation_spaces,
+            preprocessors=config.preprocessors(),
+        )
+        if mode == "train"
+           or (
+                   (isinstance(nprocesses, int) and nprocesses > 0)
+                   or (isinstance(nprocesses, Sequence) and sum(nprocesses) > 0)
+           )
+        else None
+    )
+
+
+    machine_params = MachineParams(
+            nprocesses=nprocesses,
+            devices=devices,
+            sampler_devices=DEFAULT_VALID_GPU_IDS
+            if mode == "train"
+            else devices,  # ignored with > 1 gpu_ids
+            sensor_preprocessor_graph=sensor_preprocessor_graph,
+        )
     machine_params_self: MachineParams
     worker_id = 0
-    device = "gpu:0"
+    device = "cpu"
     if isinstance(machine_params, MachineParams):
         machine_params_self = machine_params
     else:
@@ -93,7 +128,7 @@ def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
         tmpdir, "exp_Objectnav-iTHOR-RGB-ResNetGRU-DDPPO-Debug__stage_00__steps_000000163840.pt"
     )
     print("Loading checkpoint")
-    state_dict = torch.load(ckpt_path, map_location="gpu:0")
+    state_dict = torch.load(ckpt_path, map_location="cpu")
     walkthrough_model = get_model(ObjectNaviThorRGBPPOExperimentConfig)
     walkthrough_model.load_state_dict(state_dict["model_state_dict"])
 
