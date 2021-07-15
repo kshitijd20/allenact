@@ -121,7 +121,7 @@ class ObjectNavThorBaseConfig(ObjectNavBaseConfig, ABC):
                 else self.val_gpu_ids
             )
         elif mode == "test":
-            nprocesses = 10 if torch.cuda.is_available() else 1
+            nprocesses = 1 if torch.cuda.is_available() else 1
             devices = (
                 [torch.device("cpu")]
                 if not torch.cuda.is_available()
@@ -319,5 +319,5 @@ class ObjectNavThorBaseConfig(ObjectNavBaseConfig, ABC):
             res["env_args"]["all_metadata_available"] = False
             res["rewards_config"] = {**res["rewards_config"], "shaping_weight": 0}
             res["scene_directory"] = self.TEST_DATASET_DIR
-            res["loop_dataset"] = False
+            res["loop_dataset"] = True
             return res
