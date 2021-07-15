@@ -151,7 +151,7 @@ def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
         walkthrough_task_sampler.close()
     except NameError:
         pass
-    return 0
+    #return 0
     for i in range(5):
         masks = 0 * masks
 
@@ -167,7 +167,7 @@ def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
                 raise NotImplementedError
 
         batch = add_step_dim(batch_observations([task.get_observations()]))
-
+        print("Batch is ", batch)
         while not task.is_done():
             ac_out, memory = cast(
                 Tuple[ActorCriticOutput, Memory],
@@ -188,10 +188,10 @@ def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
 
             if task.num_steps_taken() >= 10:
                 break
-    #os.makedirs("tmp_out", exist_ok=True)
-    #compress_pickle.dump(
-    #     {**observations_dict}, "tmp_out/rearrange_mapping_examples.pkl.gz"
-    #)
+    os.makedirs("tmp_out", exist_ok=True)
+    compress_pickle.dump(
+         {**observations_dict}, "tmp_out/rearrange_mapping_examples.pkl.gz"
+    )
     try:
         walkthrough_task_sampler.close()
     except NameError:
