@@ -516,18 +516,7 @@ class OnPolicyRLEngine(object):
         actions, actor_critic_output, memory, step_observation_temp = self.act(
             rollouts=rollouts, dist_wrapper_class=dist_wrapper_class
         )
-        print(" actions are ",actions)
-        print("---------------------------------------------------------------")
 
-        print(" actor_critic_output are ", actor_critic_output)
-        print("---------------------------------------------------------------")
-
-        print(" memory shape is  ", memory['rnn'][0].shape)
-        print("---------------------------------------------------------------")
-
-
-        print(" self.actor_critic.action_space are ", self.actor_critic.action_space)
-        print("---------------------------------------------------------------")
         # Flatten actions
         flat_actions = su.flatten(self.actor_critic.action_space, actions)
 
@@ -577,9 +566,7 @@ class OnPolicyRLEngine(object):
         )  # [sampler, 1]
 
         npaused, keep, batch = self.remove_paused(observations)
-        print(" Length of batch is ", len(batch))
-        print(batch['rgb_lowres'].shape, batch['rgb_lowres'][0,...].max(),batch['rgb_lowres'][0,...].min(),batch['goal_object_type_ind'])
-        print("------------------------------------------------------")
+        
         # TODO self.probe(...) can be useful for debugging (we might want to control it from main?)
         # self.probe(dones, npaused)
 
