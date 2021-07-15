@@ -279,7 +279,7 @@ class ObjectNavThorBaseConfig(ObjectNavBaseConfig, ABC):
             seeds=seeds,
             deterministic_cudnn=deterministic_cudnn,
             include_expert_sensor=False,
-            allow_oversample=False,
+            allow_oversample=True,
         )
         res["scene_directory"] = self.VAL_DATASET_DIR
         res["loop_dataset"] = False
