@@ -566,7 +566,7 @@ class OnPolicyRLEngine(object):
         )  # [sampler, 1]
 
         npaused, keep, batch = self.remove_paused(observations)
-        
+
         # TODO self.probe(...) can be useful for debugging (we might want to control it from main?)
         # self.probe(dones, npaused)
 
