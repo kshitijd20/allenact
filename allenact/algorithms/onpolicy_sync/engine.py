@@ -4,6 +4,7 @@ import itertools
 import logging
 import os
 import queue
+import pickle
 import random
 import time
 import traceback
@@ -577,7 +578,7 @@ class OnPolicyRLEngine(object):
 
         npaused, keep, batch = self.remove_paused(observations)
         print(" Length of batch is ", len(batch))
-        print(batch['rgb_lowres'].shape, batch['rgb_lowres'][0,...].max(),batch['rgb_lowres'][0,...].min())
+        print(batch['rgb_lowres'].shape, batch['rgb_lowres'][0,...].max(),batch['rgb_lowres'][0,...].min(),batch['goal_object_type_ind'])
         print("------------------------------------------------------")
         # TODO self.probe(...) can be useful for debugging (we might want to control it from main?)
         # self.probe(dones, npaused)
@@ -612,6 +613,121 @@ class OnPolicyRLEngine(object):
                 visualizer.collect(actor_critic=actor_critic_output)
 
         return npaused
+
+    def collect_rollout_step_and_save(
+        self, rollouts: RolloutStorage, visualizer=None, dist_wrapper_class=None, task_id = 0
+    ) -> int:
+        actions, actor_critic_output, memory, step_observation_temp = self.act(
+            rollouts=rollouts, dist_wrapper_class=dist_wrapper_class
+        )
+        print(" actions are ",actions)
+        print("---------------------------------------------------------------")
+
+        print(" actor_critic_output are ", actor_critic_output)
+        print("---------------------------------------------------------------")
+
+        print(" memory shape is  ", memory['rnn'][0].shape)
+        print("---------------------------------------------------------------")
+
+
+        print(" self.actor_critic.action_space are ", self.actor_critic.action_space)
+        print("---------------------------------------------------------------")
+        # Flatten actions
+        flat_actions = su.flatten(self.actor_critic.action_space, actions)
+
+        assert len(flat_actions.shape) == 3, (
+            "Distribution samples must include step and task sampler dimensions [step, sampler, ...]. The simplest way"
+            "to accomplish this is to pass param tensors (like `logits` in a `CategoricalDistr`) with these dimensions"
+            "to the Distribution."
+        )
+
+        # Convert flattened actions into list of actions and send them
+        outputs: List[RLStepResult] = self.vector_tasks.step(
+            su.action_list(self.actor_critic.action_space, flat_actions)
+        )
+        # Save after task completion metrics
+        for step_result in outputs:
+            if (
+                step_result.info is not None
+                and COMPLETE_TASK_METRICS_KEY in step_result.info
+            ):
+                self.single_process_metrics_queue.put(
+                    step_result.info[COMPLETE_TASK_METRICS_KEY]
+                )
+                del step_result.info[COMPLETE_TASK_METRICS_KEY]
+
+        rewards: Union[List, torch.Tensor]
+        observations, rewards, dones, infos = [list(x) for x in zip(*outputs)]
+
+        rewards = torch.tensor(
+            rewards, dtype=torch.float, device=self.device,  # type:ignore
+        )
+
+        # We want rewards to have dimensions [sampler, reward]
+        if len(rewards.shape) == 1:
+            # Rewards are of shape [sampler,]
+            rewards = rewards.unsqueeze(-1)
+        elif len(rewards.shape) > 1:
+            raise NotImplementedError()
+
+        # If done then clean the history of observations.
+        masks = (
+            1.0
+            - torch.tensor(
+                dones, dtype=torch.float32, device=self.device,  # type:ignore
+            )
+        ).view(
+            -1, 1
+        )  # [sampler, 1]
+
+        npaused, keep, batch = self.remove_paused(observations)
+        print(" Length of batch is ", len(batch))
+        print(batch['rgb_lowres'].shape, batch['rgb_lowres'][0,...].max(),batch['rgb_lowres'][0,...].min(),batch['goal_object_type_ind'])
+        print("------------------------------------------------------")
+        save_dict = {}
+        save_dict['frames'] = batch['rgb_lowres']
+        save_dict['goal_id'] = batch['goal_object_type_ind']
+        save_dict['memory_rnn'] = memory['rnn'][0]
+        save_dict['actions'] = actions
+        save_dict['actor_critic_output'] = actor_critic_output
+        dict_path = os.path.join(self.walkthrough_dir,"task_" + str(task_id).zfill(5) + ".pkl")
+
+        with open(dict_path, 'wb') as f:
+            pickle.dump(save_dict, f)
+        # TODO self.probe(...) can be useful for debugging (we might want to control it from main?)
+        # self.probe(dones, npaused)
+
+        if npaused > 0:
+            rollouts.sampler_select(keep)
+
+        rollouts.insert(
+            observations=self._preprocess_observations(batch)
+            if len(keep) > 0
+            else batch,
+            memory=self._active_memory(memory, keep),
+            actions=flat_actions[0, keep],
+            action_log_probs=actor_critic_output.distributions.log_prob(actions)[
+                0, keep
+            ],
+            value_preds=actor_critic_output.values[0, keep],
+            rewards=rewards[keep],
+            masks=masks[keep],
+        )
+
+        # TODO we always miss tensors for the last action in the last episode of each worker
+        if visualizer is not None:
+            if len(keep) > 0:
+                visualizer.collect(
+                    rollout=rollouts,
+                    vector_task=self.vector_tasks,
+                    alive=keep,
+                    actor_critic=actor_critic_output,
+                )
+            else:
+                visualizer.collect(actor_critic=actor_critic_output)
+
+        return npaused
+
 
     def close(self, verbose=True):
         self._is_closing = True
@@ -1369,7 +1485,6 @@ class OnPolicyTrainer(OnPolicyRLEngine):
                 self.results_queue.put(("train_stopped", 1 + self.worker_id))
             self.close()
 
-
 class OnPolicyInference(OnPolicyRLEngine):
     def __init__(
         self,
@@ -1679,6 +1794,7 @@ class OnPolicyWalkthrough(OnPolicyRLEngine):
         results_queue: mp.Queue,  # to output aggregated results
         checkpoints_queue: mp.Queue,  # to write/read (trainer/evaluator) ready checkpoints
         checkpoints_dir: str = "",
+        metrics_dir: str = "",
         mode: str = "valid",  # or "test"
         seed: Optional[int] = None,
         deterministic_cudnn: bool = False,
@@ -1708,7 +1824,10 @@ class OnPolicyWalkthrough(OnPolicyRLEngine):
             distributed_port=distributed_port,
             **kwargs,
         )
-
+        self.metrics_dir = metrics_dir
+        self.walkthrough_dir = os.path.join(self.metrics_dir,"walkthrough")
+        if not os.path.exists(self.walkthrough_dir):
+            os.makedirs(self.walkthrough_dir)
         self.enforce_expert = enforce_expert
 
     def run_eval(
@@ -1778,8 +1897,8 @@ class OnPolicyWalkthrough(OnPolicyRLEngine):
         while self.num_active_samplers > 0:
             frames += self.num_active_samplers
             print("What are frames ", frames)
-            self.collect_rollout_step(
-                rollouts, visualizer=visualizer, dist_wrapper_class=dist_wrapper_class
+            self.collect_rollout_step_and_save(
+                rollouts, visualizer=visualizer, dist_wrapper_class=dist_wrapper_class, task_id = steps
             )
             steps += 1
 

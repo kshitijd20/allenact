@@ -604,6 +604,8 @@ class OnPolicyRunner(object):
         distributed_port = 0
         if num_testers > 1:
             distributed_port = find_free_port()
+        metrics_dir = self.metric_path(self.local_start_time_str)
+        os.makedirs(metrics_dir, exist_ok=True)
 
         for tester_it in range(num_testers):
             test: BaseProcess = self.mp_ctx.Process(
@@ -622,6 +624,7 @@ class OnPolicyRunner(object):
                     max_sampler_processes_per_worker=max_sampler_processes_per_worker,
                     distributed_port=distributed_port,
                     enforce_expert=inference_expert,
+                    metrics_dir = metrics_dir,
                 ),
             )
 
@@ -649,8 +652,7 @@ class OnPolicyRunner(object):
         for _ in range(num_testers):
             self.queues["checkpoints"].put(("quit", None))
 
-        metrics_dir = self.metric_path(self.local_start_time_str)
-        os.makedirs(metrics_dir, exist_ok=True)
+
         suffix = "__test_{}".format(self.local_start_time_str)
         metrics_file_path = os.path.join(metrics_dir, "metrics" + suffix + ".json")
 
