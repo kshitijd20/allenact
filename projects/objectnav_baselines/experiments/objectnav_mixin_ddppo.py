@@ -50,12 +50,12 @@ class ObjectNavMixInPPOConfig(ObjectNavBaseConfig):
 
 class ObjectNavMixInPPOConfigDebug(ObjectNavBaseConfig):
     def training_pipeline(self, **kwargs):
-        ppo_steps = int(300000)
+        ppo_steps = int(30000000)
         lr = 3e-4
         num_mini_batch = 1
         update_repeats = 4
         num_steps = 128
-        save_interval = 20000
+        save_interval = 40000
         log_interval = 10000 if torch.cuda.is_available() else 1
         gamma = 0.99
         use_gae = True

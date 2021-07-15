@@ -26,7 +26,7 @@ from projects.objectnav_baselines.experiments.ithor.objectnav_ithor_rgb_resnetgr
     ObjectNaviThorRGBPPOExperimentConfig,
 )
 from allenact.algorithms.onpolicy_sync.policy import ActorCriticModel
-
+from collections import defaultdict
 from typing import Dict, List, Tuple, cast
 from allenact.utils.experiment_utils import set_seed
 from allenact.algorithms.onpolicy_sync.storage import RolloutStorage
@@ -152,11 +152,16 @@ def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
     except NameError:
         pass
     #return 0
-    for i in range(5):
+    observations_dict = defaultdict(lambda: [])
+    for i in range(3):
         masks = 0 * masks
 
         set_seed(i + 1)
         task = walkthrough_task_sampler.next_task()
+
+        obs_list = observations_dict[i]
+        obs_list.append(task.get_observations())
+
         print("Task is ", task)
         def add_step_dim(input):
             if isinstance(input, torch.Tensor):
@@ -185,6 +190,8 @@ def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
             obs = task.step(
                 action=ac_out.distributions.sample().item()
             ).observation
+
+            obs_list.append(obs)
             #batch = add_step_dim(batch_observations([obs]))
             batch = add_step_dim(sensor_preprocessor_graph.get_observations(batch_observations([task.get_observations()])))
             if task.num_steps_taken() >= 10:

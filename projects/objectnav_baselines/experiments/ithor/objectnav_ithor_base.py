@@ -53,16 +53,6 @@ class ObjectNaviThorBaseConfigDebug(ObjectNavThorBaseConfig, ABC):
             [
                 "AlarmClock",
                 "Apple",
-                "Book",
-                "Bowl",
-                "Box",
-                "Candle",
-                "GarbageCan",
-                "HousePlant",
-                "Laptop",
-                "SoapBottle",
-                "Television",
-                "Toaster",
             ]
         )
     )
