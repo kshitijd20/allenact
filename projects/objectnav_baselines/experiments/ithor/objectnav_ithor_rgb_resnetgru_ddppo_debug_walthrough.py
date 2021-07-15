@@ -109,7 +109,7 @@ def get_model(config):
             ActorCriticModel, config.create_model(**create_model_kwargs),
         ).to(device)
 
-    return actor_critic
+    return actor_critic,sensor_preprocessor_graph
 def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
     devices = (
         [torch.device("cpu")]
@@ -129,7 +129,7 @@ def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
     )
     print("Loading checkpoint")
     state_dict = torch.load(ckpt_path, map_location="cpu")
-    walkthrough_model = get_model(ObjectNaviThorRGBPPOExperimentConfig)
+    walkthrough_model,sensor_preprocessor_graph = get_model(ObjectNaviThorRGBPPOExperimentConfig)
     walkthrough_model.load_state_dict(state_dict["model_state_dict"])
 
     print("Loaded checkpoint")
@@ -172,7 +172,7 @@ def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
             ac_out, memory = cast(
                 Tuple[ActorCriticOutput, Memory],
                 walkthrough_model.forward(
-                    observations=batch,
+                    observations=sensor_preprocessor_graph.get_observations(batch),
                     memory=memory,
                     prev_actions=None,
                     masks=masks,
