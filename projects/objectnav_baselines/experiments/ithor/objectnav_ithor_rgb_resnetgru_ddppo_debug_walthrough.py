@@ -166,7 +166,8 @@ def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
             else:
                 raise NotImplementedError
 
-        batch = add_step_dim(batch_observations([task.get_observations()]))
+        #batch = add_step_dim(batch_observations([task.get_observations()]))
+        batch = batch_observations([task.get_observations()])
         print("Batch is ", batch)
         while not task.is_done():
             ac_out, memory = cast(
@@ -184,8 +185,8 @@ def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
             obs = task.step(
                 action=ac_out.distributions.sample().item()
             ).observation
-            batch = add_step_dim(batch_observations([obs]))
-
+            #batch = add_step_dim(batch_observations([obs]))
+            batch = batch_observations([task.get_observations()])
             if task.num_steps_taken() >= 10:
                 break
     os.makedirs("tmp_out", exist_ok=True)
