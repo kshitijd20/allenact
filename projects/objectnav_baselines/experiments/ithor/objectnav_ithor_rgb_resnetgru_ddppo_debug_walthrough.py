@@ -20,6 +20,7 @@ from allenact.utils.experiment_utils import set_seed
 from allenact.algorithms.onpolicy_sync.storage import RolloutStorage
 from allenact.utils.tensor_utils import batch_observations
 from allenact.base_abstractions.misc import Memory, ActorCriticOutput
+from allenact.base_abstractions.experiment_config import ExperimentConfig, MachineParams
 
 import compress_pickle
 import numpy as np
@@ -39,7 +40,7 @@ def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
     exp_config = ObjectNaviThorRGBPPOExperimentConfig()
     sampler_args = exp_config.valid_task_sampler_args(process_ind = 0,total_processes=1)
 
-    walkthrough_task_sampler = exp_config.make_sampler_fn(sampler_args)
+    walkthrough_task_sampler = exp_config.make_sampler_fn(**sampler_args)
     print("Created sampler")
     print("------------------------------------------------------------------------")
 
@@ -48,7 +49,6 @@ def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
     )
     print("Loading checkpoint")
     state_dict = torch.load(ckpt_path, map_location="cpu")
-
     walkthrough_model = ObjectNaviThorRGBPPOExperimentConfig.create_model()
     walkthrough_model.load_state_dict(state_dict["model_state_dict"])
 

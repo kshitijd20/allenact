@@ -178,7 +178,7 @@ class OnPolicyRLEngine(object):
                 create_model_kwargs[
                     "sensor_preprocessor_graph"
                 ] = self.sensor_preprocessor_graph
-
+            print("Model args are ",create_model_kwargs)
             set_seed(self.seed)
             self.actor_critic = cast(
                 ActorCriticModel, self.config.create_model(**create_model_kwargs),
