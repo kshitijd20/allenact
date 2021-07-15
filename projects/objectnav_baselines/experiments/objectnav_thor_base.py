@@ -210,7 +210,7 @@ class ObjectNavThorBaseConfig(ObjectNavBaseConfig, ABC):
         inds = self._partition_inds(len(scenes), total_processes)
 
         x_display: Optional[str] = None
-        if 0:#platform.system() == "Linux":
+        if platform.system() == "Linux":
             x_displays = get_open_x_displays(throw_error_if_empty=True)
 
             if len([d for d in devices if d != torch.device("cpu")]) > len(x_displays):
