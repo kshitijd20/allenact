@@ -11,10 +11,22 @@ from projects.objectnav_baselines.experiments.objectnav_mixin_ddppo import (
 from projects.objectnav_baselines.experiments.objectnav_mixin_resnetgru import (
     ObjectNavMixInResNetGRUConfig,
 )
-
+from typing import (
+    Optional,
+    Any,
+    Dict,
+    Union,
+    List,
+    Sequence,
+    cast,
+    Iterator,
+    Callable,
+)
 from projects.objectnav_baselines.experiments.ithor.objectnav_ithor_rgb_resnetgru_ddppo_debug import (
     ObjectNaviThorRGBPPOExperimentConfig,
 )
+from allenact.algorithms.onpolicy_sync.policy import ActorCriticModel
+
 from typing import Dict, List, Tuple, cast
 from allenact.utils.experiment_utils import set_seed
 from allenact.algorithms.onpolicy_sync.storage import RolloutStorage
@@ -34,6 +46,35 @@ from allenact_plugins.ithor_plugin.ithor_sensors import (
 import os
 import torch
 
+def get_model(config):
+    mode = "valid"
+    machine_params = config.machine_params(mode)
+    machine_params_self: MachineParams
+    worker_id = 0
+    if isinstance(machine_params, MachineParams):
+        machine_params_self = machine_params
+    else:
+        machine_params_self = MachineParams(**machine_params)
+
+    num_samplers_per_worker = machine_params_self.nprocesses
+    num_samplers = num_samplers_per_worker[worker_id]
+    device = "cpu"
+    sensor_preprocessor_graph = None
+    actor_critic: Optional[ActorCriticModel] = None
+    if num_samplers > 0:
+        create_model_kwargs = {}
+        if machine_params.sensor_preprocessor_graph is not None:
+            sensor_preprocessor_graph = machine_params.sensor_preprocessor_graph.to(
+                device
+            )
+            create_model_kwargs[
+                "sensor_preprocessor_graph"
+            ] = sensor_preprocessor_graph
+        actor_critic = cast(
+            ActorCriticModel, config.create_model(**create_model_kwargs),
+        ).to(device)
+
+    return actor_critic
 def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
 
     print("Creating sampler")
@@ -49,7 +90,7 @@ def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
     )
     print("Loading checkpoint")
     state_dict = torch.load(ckpt_path, map_location="cpu")
-    walkthrough_model = ObjectNaviThorRGBPPOExperimentConfig.create_model()
+    walkthrough_model = get_model(ObjectNaviThorRGBPPOExperimentConfig)
     walkthrough_model.load_state_dict(state_dict["model_state_dict"])
 
     print("Loaded checkpoint")
