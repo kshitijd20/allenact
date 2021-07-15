@@ -45,12 +45,13 @@ from allenact_plugins.ithor_plugin.ithor_sensors import (
 )
 import os
 import torch
-
+DEFAULT_VALID_GPU_IDS = (torch.cuda.device_count() - 1,)
 def get_model(config):
     mode = "valid"
     machine_params = config.machine_params(mode)
     machine_params_self: MachineParams
     worker_id = 0
+    device = "gpu:0"
     if isinstance(machine_params, MachineParams):
         machine_params_self = machine_params
     else:
@@ -58,7 +59,6 @@ def get_model(config):
 
     num_samplers_per_worker = machine_params_self.nprocesses
     num_samplers = num_samplers_per_worker[worker_id]
-    device = "cpu"
     sensor_preprocessor_graph = None
     actor_critic: Optional[ActorCriticModel] = None
     if num_samplers > 0:
@@ -76,10 +76,14 @@ def get_model(config):
 
     return actor_critic
 def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
-
+    devices = (
+        [torch.device("cpu")]
+        if not torch.cuda.is_available()
+        else DEFAULT_VALID_GPU_IDS
+    )
     print("Creating sampler")
     exp_config = ObjectNaviThorRGBPPOExperimentConfig()
-    sampler_args = exp_config.valid_task_sampler_args(process_ind = 0,total_processes=1)
+    sampler_args = exp_config.valid_task_sampler_args(process_ind = 0,total_processes=1,devices=devices)
 
     walkthrough_task_sampler = exp_config.make_sampler_fn(**sampler_args)
     print("Created sampler")
@@ -89,7 +93,7 @@ def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
         tmpdir, "exp_Objectnav-iTHOR-RGB-ResNetGRU-DDPPO-Debug__stage_00__steps_000000163840.pt"
     )
     print("Loading checkpoint")
-    state_dict = torch.load(ckpt_path, map_location="cpu")
+    state_dict = torch.load(ckpt_path, map_location="gpu:0")
     walkthrough_model = get_model(ObjectNaviThorRGBPPOExperimentConfig)
     walkthrough_model.load_state_dict(state_dict["model_state_dict"])
 
