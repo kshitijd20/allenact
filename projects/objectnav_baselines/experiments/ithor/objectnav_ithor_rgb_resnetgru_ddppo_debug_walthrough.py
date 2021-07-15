@@ -48,7 +48,7 @@ import torch
 DEFAULT_VALID_GPU_IDS = (torch.cuda.device_count() - 1,)
 def get_model(config):
     mode = "valid"
-    machine_params = config.machine_params(mode)
+    machine_params = config.machine_params(mode=mode)
     machine_params_self: MachineParams
     worker_id = 0
     device = "gpu:0"
