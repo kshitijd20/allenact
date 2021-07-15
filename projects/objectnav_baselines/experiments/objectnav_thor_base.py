@@ -319,5 +319,5 @@ class ObjectNavThorBaseConfig(ObjectNavBaseConfig, ABC):
             res["env_args"]["all_metadata_available"] = False
             res["rewards_config"] = {**res["rewards_config"], "shaping_weight": 0}
             res["scene_directory"] = self.TEST_DATASET_DIR
-            res["loop_dataset"] = True
+            res["loop_dataset"] = False
             return res
