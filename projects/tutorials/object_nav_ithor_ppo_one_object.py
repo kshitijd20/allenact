@@ -7,7 +7,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import LambdaLR
+import platform
 
+from allenact.utils.system import get_logger
 from allenact.algorithms.onpolicy_sync.losses import PPO
 from allenact.algorithms.onpolicy_sync.losses.ppo import PPOConfig
 from allenact.base_abstractions.experiment_config import ExperimentConfig, MachineParams
@@ -28,7 +30,10 @@ from allenact_plugins.ithor_plugin.ithor_tasks import ObjectNaviThorGridTask
 from projects.objectnav_baselines.models.object_nav_models import (
     ObjectNavBaselineActorCritic,
 )
-
+from allenact_plugins.ithor_plugin.ithor_util import (
+    horizontal_to_vertical_fov,
+    get_open_x_displays,
+)
 
 class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
     """A simple object navigation experiment in THOR.
@@ -170,7 +175,22 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
                     " You can avoid this by setting a number of workers divisor of the number of scenes"
                 )
         inds = self._partition_inds(len(scenes), total_processes)
+        x_display: Optional[str] = None
+        num_gpus = torch.cuda.device_count()
+        has_gpu = num_gpus != 0
+        devices = [1 % num_gpus] if has_gpu else []
+        if platform.system() == "Linux":
+            x_displays = get_open_x_displays(throw_error_if_empty=True)
 
+            if len([d for d in devices if d != torch.device("cpu")]) > len(x_displays):
+                get_logger().warning(
+                    f"More GPU devices found than X-displays (devices: `{x_displays}`, x_displays: `{x_displays}`)."
+                    f" This is not necessarily a bad thing but may mean that you're not using GPU memory as"
+                    f" efficiently as possible. Consider following the instructions here:"
+                    f" https://allenact.org/installation/installation-framework/#installation-of-ithor-ithor-plugin"
+                    f" describing how to start an X-display on every GPU."
+                )
+            x_display = x_displays[process_ind % len(x_displays)]
         return {
             "scenes": scenes[inds[process_ind] : inds[process_ind + 1]],
             "object_types": self.OBJECT_TYPES,
