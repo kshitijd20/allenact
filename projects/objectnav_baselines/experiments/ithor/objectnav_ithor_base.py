@@ -16,7 +16,7 @@ class ObjectNaviThorBaseConfig(ObjectNavThorBaseConfig, ABC):
     DEFAULT_NUM_TRAIN_PROCESSES = 40 if torch.cuda.is_available() else 1
 
     TRAIN_DATASET_DIR = os.path.join(os.getcwd(), "datasets/ithor-objectnav/train")
-    VAL_DATASET_DIR = os.path.join(os.getcwd(), "datasets/ithor-objectnav/val")
+    VAL_DATASET_DIR = os.path.join(os.getcwd(), "datasets/ithor-objectnav/val_correct")
 
     TARGET_TYPES = tuple(
         sorted(
@@ -53,6 +53,17 @@ class ObjectNaviThorBaseConfigDebug(ObjectNavThorBaseConfig, ABC):
             [
                 "AlarmClock",
                 "Apple",
+                "Book",
+                "Bowl",
+                "Box",
+                "Candle",
+                "GarbageCan",
+                "HousePlant",
+                "Laptop",
+                "SoapBottle",
+                "Television",
+                "Toaster",
+
             ]
         )
     )

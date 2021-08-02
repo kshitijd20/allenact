@@ -29,7 +29,7 @@ class RolloutStorage(object):
         num_steps: int,
         num_samplers: int,
         actor_critic: ActorCriticModel,
-        only_store_first_and_last_in_memory: bool = True,
+        only_store_first_and_last_in_memory: bool = False,
     ):
         self.num_steps = num_steps
         self.only_store_first_and_last_in_memory = only_store_first_and_last_in_memory

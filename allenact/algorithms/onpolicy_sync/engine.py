@@ -130,7 +130,7 @@ class OnPolicyRLEngine(object):
         self.num_workers = num_workers
         self.device = torch.device("cpu") if device == -1 else torch.device(device)  # type: ignore
         self.distributed_port = distributed_port
-
+        self.episode_rnn = []
         self.mode = mode.lower().strip()
         assert self.mode in [
             TRAIN_MODE_STR,
@@ -519,6 +519,12 @@ class OnPolicyRLEngine(object):
 
         # Flatten actions
         flat_actions = su.flatten(self.actor_critic.action_space, actions)
+        #print("============================================================================================================")
+        #print("What are actions?? ")
+        #print("actions are ", actions, "flat action is ", flat_actions)
+        #print("Memory is ", memory['rnn'][0].shape)
+        #print("ac output is ", actor_critic_output)
+        #print("============================================================================================================")
 
         assert len(flat_actions.shape) == 3, (
             "Distribution samples must include step and task sampler dimensions [step, sampler, ...]. The simplest way"
@@ -530,17 +536,29 @@ class OnPolicyRLEngine(object):
         outputs: List[RLStepResult] = self.vector_tasks.step(
             su.action_list(self.actor_critic.action_space, flat_actions)
         )
+        self.episode_rnn.append(memory['rnn'][0].detach().cpu().numpy().squeeze())
+        #print("============================================================================================================")
+        #print("What are outputs?? ")
+
+
+
         # Save after task completion metrics
         for step_result in outputs:
             if (
                 step_result.info is not None
                 and COMPLETE_TASK_METRICS_KEY in step_result.info
             ):
+                print(step_result.info[COMPLETE_TASK_METRICS_KEY])
+                step_result.info[COMPLETE_TASK_METRICS_KEY]['task_info']['rnn'] = self.episode_rnn
+                print("Length of memory should be equal to episodes ",len(self.episode_rnn))
+                print(self.episode_rnn[0].shape)
                 self.single_process_metrics_queue.put(
                     step_result.info[COMPLETE_TASK_METRICS_KEY]
                 )
                 del step_result.info[COMPLETE_TASK_METRICS_KEY]
+                self.episode_rnn = []
 
+                print("============================================================================================================")
         rewards: Union[List, torch.Tensor]
         observations, rewards, dones, infos = [list(x) for x in zip(*outputs)]
 

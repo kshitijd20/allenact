@@ -121,7 +121,7 @@ class ObjectNavThorBaseConfig(ObjectNavBaseConfig, ABC):
                 else self.val_gpu_ids
             )
         elif mode == "test":
-            nprocesses = 40 if torch.cuda.is_available() else 1
+            nprocesses = 1 #19 if torch.cuda.is_available() else 1
             devices = (
                 [torch.device("cpu")]
                 if not torch.cuda.is_available()
