@@ -200,6 +200,7 @@ def test_pretrained_objectnav_walkthrough_mapping_agent( tmpdir):
     compress_pickle.dump(
          {**observations_dict}, "tmp_out/rearrange_mapping_examples.pkl.gz"
     )
+    print("observation saved now chill")
     try:
         walkthrough_task_sampler.close()
     except NameError:

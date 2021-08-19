@@ -548,17 +548,17 @@ class OnPolicyRLEngine(object):
                 step_result.info is not None
                 and COMPLETE_TASK_METRICS_KEY in step_result.info
             ):
-                print(step_result.info[COMPLETE_TASK_METRICS_KEY])
+                #print(step_result.info[COMPLETE_TASK_METRICS_KEY])
                 step_result.info[COMPLETE_TASK_METRICS_KEY]['task_info']['rnn'] = self.episode_rnn
-                print("Length of memory should be equal to episodes ",len(self.episode_rnn))
-                print(self.episode_rnn[0].shape)
+                #print("Length of memory should be equal to episodes ",len(self.episode_rnn))
+                #print(self.episode_rnn[0].shape)
                 self.single_process_metrics_queue.put(
                     step_result.info[COMPLETE_TASK_METRICS_KEY]
                 )
                 del step_result.info[COMPLETE_TASK_METRICS_KEY]
                 self.episode_rnn = []
 
-                print("============================================================================================================")
+                #print("============================================================================================================")
         rewards: Union[List, torch.Tensor]
         observations, rewards, dones, infos = [list(x) for x in zip(*outputs)]
 
