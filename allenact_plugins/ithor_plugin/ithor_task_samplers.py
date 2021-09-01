@@ -239,6 +239,7 @@ class ObjectNaviThorDatasetTaskSampler(TaskSampler):
         self.scene_order: Optional[List[str]] = None
         self.scene_id: Optional[int] = None
         # get the total number of tasks assigned to this process
+        print("Loop dataset is ", loop_dataset)
         if loop_dataset:
             self.max_tasks = None
         else:

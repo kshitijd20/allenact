@@ -90,7 +90,8 @@ class ObjectNaviThorGridTask(Task[IThorEnvironment]):
             []
         )  # the initial coordinate will be directly taken from the optimal path
         self.travelled_distance = 0.0
-        self.task_info["followed_path"] = [self.env.get_agent_location()]
+        self.task_info["followed_path"] = [self.env.agent_state()]
+        self.task_info["taken_actions"] = []
         self.task_info["action_names"] = self.class_action_names()
 
         if self._all_metadata_available:
@@ -119,7 +120,7 @@ class ObjectNaviThorGridTask(Task[IThorEnvironment]):
         action = cast(int, action)
 
         action_str = self.class_action_names()[action]
-
+        self.task_info["taken_actions"].append(action_str)
         if action_str == END:
             self._took_end_action = True
             self._success = self.is_goal_object_visible()

@@ -294,7 +294,7 @@ class IThorEnvironment(object):
             raise RuntimeError(
                 "Trying to start the environment but it is already started."
             )
-
+        
         self.controller = Controller(
             x_display=self.x_display,
             width=self._start_player_screen_width,
@@ -361,6 +361,14 @@ class IThorEnvironment(object):
                 "fov": self._fov,
                 "makeAgentsVisible": self.make_agents_visible,
                 "alwaysReturnVisibleRange": self._always_return_visible_range,
+                "x_display": self.x_display,
+                "rotateStepDegrees" : self._rotate_step_degrees,
+                "width" : self._start_player_screen_width,
+                "height" : self._start_player_screen_height,
+                "local_executable_path" : self._local_thor_build,
+                "snapToGrid" : self._snap_to_grid,
+                "quality": self._quality,
+                #"server_class": ai2thor.fifo_server.FifoServer,
                 **kwargs,
             }
         )
