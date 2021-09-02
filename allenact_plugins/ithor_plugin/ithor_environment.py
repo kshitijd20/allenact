@@ -186,11 +186,10 @@ class IThorEnvironment(object):
 
         self.controller = Controller(
             x_display=self.x_display,
-            width=self._start_player_screen_width,
-            height=self._start_player_screen_height,
             local_executable_path=self._local_thor_build,
             quality=self._quality,
             server_class=ai2thor.fifo_server.FifoServer,
+            **kwargs
         )
 
         if (
@@ -244,8 +243,6 @@ class IThorEnvironment(object):
         self.controller.step(
             {
                 "action": "Initialize",
-                "gridSize": self._grid_size,
-                "visibilityDistance": self._visibility_distance,
                 "fov": self._fov,
                 "makeAgentsVisible": self.make_agents_visible,
                 "alwaysReturnVisibleRange": self._always_return_visible_range,
@@ -1116,3 +1113,62 @@ class IThorEnvironment(object):
             return nx.shortest_path_length(self.graph, source_state_key, goal_state_key)
         except nx.NetworkXNoPath as _:
             return float("inf")
+
+    def distance_from_point_to_point(
+        self, position: Dict[str, float], target: Dict[str, float], allowed_error: float
+    ) -> float:
+        path = self.path_from_point_to_point(position, target, allowed_error)
+        if path:
+            # Because `allowed_error != 0` means that the path returned above might not start
+            # or end exactly at the position/target points, we explictly add any offset there is.
+            s_dist = math.sqrt(
+                (position["x"] - path[0]["x"]) ** 2
+                + (position["z"] - path[0]["z"]) ** 2
+            )
+            t_dist = math.sqrt(
+                (target["x"] - path[-1]["x"]) ** 2 + (target["z"] - path[-1]["z"]) ** 2
+            )
+            return metrics.path_distance(path) + s_dist + t_dist
+        return -1.0
+
+    def distance_to_point(self, target: Dict[str, float], agent_id: int = 0) -> float:
+        """Minimal geodesic distance to end point from agent's current
+        location.
+
+        It might return -1.0 for unreachable targets.
+        """
+        assert 0 <= agent_id < self.agent_count
+        assert (
+            self.all_metadata_available
+        ), "`distance_to_object_type` cannot be called when `self.all_metadata_available` is `False`."
+
+        def retry_dist(position: Dict[str, float], target: Dict[str, float]):
+            allowed_error = 0.05
+            debug_log = ""
+            d = -1.0
+            while allowed_error < 2.5:
+                d = self.distance_from_point_to_point(position, target, allowed_error)
+                if d < 0:
+                    debug_log = (
+                        f"In scene {self.scene_name}, could not find a path from {position} to {target} with"
+                        f" {allowed_error} error tolerance. Increasing this tolerance to"
+                        f" {2 * allowed_error} any trying again."
+                    )
+                    allowed_error *= 2
+                else:
+                    break
+            if d < 0:
+                get_logger().warning(
+                    f"In scene {self.scene_name}, could not find a path from {position} to {target}"
+                    f" with {allowed_error} error tolerance. Returning a distance of -1."
+                )
+            elif debug_log != "":
+                get_logger().debug(debug_log)
+            return d
+
+        return self.distance_cache.find_distance(
+            self.scene_name,
+            self.controller.last_event.events[agent_id].metadata["agent"]["position"],
+            target,
+            retry_dist,
+        )
