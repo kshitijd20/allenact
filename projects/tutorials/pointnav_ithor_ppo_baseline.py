@@ -35,7 +35,7 @@ from allenact_plugins.ithor_plugin.ithor_sensors import (
 from allenact_plugins.ithor_plugin.ithor_task_samplers import (
     PointNaviThorDatasetTaskSampler,
 )
-from allenact_plugins.ithor_plugin.ithor_tasks import ObjectNaviThorGridTask
+from allenact_plugins.ithor_plugin.ithor_tasks import ObjectNaviThorGridTask, PointNavTask
 from projects.pointnav_baselines.models.point_nav_models import (
     ResnetTensorPointNavActorCritic,
 )

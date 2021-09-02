@@ -1,15 +1,15 @@
 import copy
 import random
 from typing import List, Dict, Optional, Any, Union, cast
-
+import json
 import gym
-
+import gzip
 from allenact.base_abstractions.sensor import Sensor
 from allenact.base_abstractions.task import TaskSampler
 from allenact.utils.experiment_utils import set_deterministic_cudnn, set_seed
 from allenact.utils.system import get_logger
 from allenact_plugins.ithor_plugin.ithor_environment import IThorEnvironment
-from allenact_plugins.ithor_plugin.ithor_tasks import ObjectNaviThorGridTask
+from allenact_plugins.ithor_plugin.ithor_tasks import ObjectNaviThorGridTask,PointNavTask
 
 
 class ObjectNavTaskSampler(TaskSampler):
@@ -199,7 +199,7 @@ class ObjectNavTaskSampler(TaskSampler):
         if seed is not None:
             set_seed(seed)
 
-class PointNavDatasetTaskSampler(TaskSampler):
+class PointNaviThorDatasetTaskSampler(TaskSampler):
     def __init__(
         self,
         scenes: List[str],
@@ -222,8 +222,8 @@ class PointNavDatasetTaskSampler(TaskSampler):
         self.scenes = scenes
         self.shuffle_dataset: bool = shuffle_dataset
         self.episodes = {
-            scene: ObjectNavDatasetTaskSampler.load_dataset(
-                scene, scene_directory + "/episodes"
+            scene: self.load_dataset(
+                scene, scene_directory
             )
             for scene in scenes
         }
@@ -258,6 +258,22 @@ class PointNavDatasetTaskSampler(TaskSampler):
     def _create_environment(self) -> IThorEnvironment:
         env = self.env_class(**self.env_args)
         return env
+
+    @staticmethod
+    def load_dataset(scene: str, base_directory: str) -> List[Dict]:
+        filename = (
+            "/".join([base_directory, scene])
+            if base_directory[-1] != "/"
+            else "".join([base_directory, scene])
+        )
+        filename += ".json.gz"
+        fin = gzip.GzipFile(filename, "r")
+        json_bytes = fin.read()
+        fin.close()
+        json_str = json_bytes.decode("utf-8")
+        data = json.loads(json_str)
+        random.shuffle(data)
+        return data
 
     @property
     def __len__(self) -> Union[int, float]:

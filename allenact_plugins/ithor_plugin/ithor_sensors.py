@@ -6,6 +6,7 @@ import gym
 import gym.spaces
 import numpy as np
 import torch
+import quaternion
 
 from allenact.base_abstractions.sensor import Sensor
 from allenact.embodiedai.sensors.vision_sensors import RGBSensor
@@ -17,7 +18,7 @@ from allenact.embodiedai.mapping.mapping_utils.map_builders import (
 )
 from allenact.utils.misc_utils import prepare_locals_for_super
 from allenact_plugins.ithor_plugin.ithor_environment import IThorEnvironment
-from allenact_plugins.ithor_plugin.ithor_tasks import ObjectNaviThorGridTask
+from allenact_plugins.ithor_plugin.ithor_tasks import ObjectNaviThorGridTask, PointNavTask
 from allenact_plugins.ithor_plugin.ithor_util import include_object_data
 from allenact_plugins.robothor_plugin.robothor_environment import RoboThorEnvironment
 from allenact_plugins.robothor_plugin.robothor_tasks import PointNavTask, ObjectNavTask
