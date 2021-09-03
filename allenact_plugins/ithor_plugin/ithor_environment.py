@@ -15,7 +15,14 @@ from scipy.spatial.transform import Rotation
 from allenact.utils.system import get_logger
 from allenact_plugins.ithor_plugin.ithor_constants import VISIBILITY_DISTANCE, FOV
 from allenact_plugins.ithor_plugin.ithor_util import round_to_factor
+from ai2thor.util import metrics
 
+from allenact.utils.cache_utils import (
+    DynamicDistanceCache,
+    pos_to_str_for_cache,
+    str_to_pos_for_cache,
+)
+from allenact.utils.experiment_utils import recursive_update
 
 class IThorEnvironment(object):
     """Wrapper for the ai2thor controller providing additional functionality
@@ -43,6 +50,8 @@ class IThorEnvironment(object):
         make_agents_visible: bool = True,
         object_open_speed: float = 1.0,
         simplify_physics: bool = False,
+        all_metadata_available: bool = True,
+        **kwargs
     ) -> None:
         """Initializer.
 
@@ -81,6 +90,7 @@ class IThorEnvironment(object):
         self.controller: Optional[Controller] = None
         self._started = False
         self._quality = quality
+        self.all_metadata_available = all_metadata_available
 
         self._initially_reachable_points: Optional[List[Dict]] = None
         self._initially_reachable_points_set: Optional[Set[Tuple[float, float]]] = None
@@ -96,7 +106,21 @@ class IThorEnvironment(object):
         self._always_return_visible_range = False
         self.simplify_physics = simplify_physics
 
+        self.scene_to_reachable_positions: Optional[Dict[str, Any]] = None
+        self.distance_cache: Optional[DynamicDistanceCache] = None
+
         self.start(None)
+        if self.all_metadata_available:
+            self.scene_to_reachable_positions = {
+                self.scene_name: copy.deepcopy(self.currently_reachable_points)
+            }
+            assert len(self.scene_to_reachable_positions[self.scene_name]) > 10
+
+            self.distance_cache = DynamicDistanceCache(rounding=1)
+
+        self._extra_teleport_kwargs: Dict[
+            str, Any
+        ] = {} 
         # noinspection PyTypeHints
         self.controller.docker_enabled = docker_enabled  # type: ignore
 
@@ -215,6 +239,48 @@ class IThorEnvironment(object):
             get_logger().warning(str(e))
         finally:
             self._started = False
+
+    def agent_state(self, agent_id: int = 0) -> Dict:
+        """Return agent position, rotation and horizon."""
+        #assert 0 <= agent_id < self.agent_count
+
+        agent_meta = self.last_event.events[agent_id].metadata["agent"]
+        return {
+            **{k: float(v) for k, v in agent_meta["position"].items()},
+            "rotation": {k: float(v) for k, v in agent_meta["rotation"].items()},
+            "horizon": round(float(agent_meta["cameraHorizon"]), 1),
+        }
+
+    def teleport(
+        self,
+        pose: Dict[str, float],
+        rotation: Dict[str, float],
+        horizon: float = 0.0,
+        agent_id: int = 0,
+    ):
+        #assert 0 <= agent_id < self.agent_count
+        try:
+            e = self.controller.step(
+                action="TeleportFull",
+                x=pose["x"],
+                y=pose["y"],
+                z=pose["z"],
+                rotation=rotation,
+                horizon=horizon,
+                agentId=agent_id,
+                standing=True,
+            )
+        except ValueError as e:
+            if len(self._extra_teleport_kwargs) == 0:
+                self._extra_teleport_kwargs["standing"] = True
+            else:
+                raise e
+            return self.teleport(
+                pose=pose, rotation=rotation, horizon=horizon, agent_id=agent_id
+            )
+        return e.metadata["lastActionSuccess"]
+
+
 
     def reset(
         self,
@@ -1113,6 +1179,28 @@ class IThorEnvironment(object):
             return nx.shortest_path_length(self.graph, source_state_key, goal_state_key)
         except nx.NetworkXNoPath as _:
             return float("inf")
+    def path_from_point_to_point(
+        self, position: Dict[str, float], target: Dict[str, float], allowedError: float
+    ) -> Optional[List[Dict[str, float]]]:
+        try:
+            return self.controller.step(
+                action="GetShortestPathToPoint",
+                position=position,
+                x=target["x"],
+                y=target["y"],
+                z=target["z"],
+                allowedError=allowedError,
+            ).metadata["actionReturn"]["corners"]
+        except Exception:
+            get_logger().debug(
+                "Failed to find path for {} in {}. Start point {}, agent state {}.".format(
+                    target,
+                    self.controller.last_event.metadata["sceneName"],
+                    position,
+                    self.agent_state(),
+                )
+            )
+            return None
 
     def distance_from_point_to_point(
         self, position: Dict[str, float], target: Dict[str, float], allowed_error: float
@@ -1137,7 +1225,7 @@ class IThorEnvironment(object):
 
         It might return -1.0 for unreachable targets.
         """
-        assert 0 <= agent_id < self.agent_count
+        #assert 0 <= agent_id < self.agent_count
         assert (
             self.all_metadata_available
         ), "`distance_to_object_type` cannot be called when `self.all_metadata_available` is `False`."

@@ -21,6 +21,23 @@ from allenact_plugins.ithor_plugin.ithor_environment import IThorEnvironment
 from allenact_plugins.ithor_plugin.ithor_util import round_to_factor
 
 
+def spl_metric(
+    success: bool, optimal_distance: float, travelled_distance: float
+) -> Optional[float]:
+    if not success:
+        return 0.0
+    elif optimal_distance < 0:
+        return None
+    elif optimal_distance == 0:
+        if travelled_distance == 0:
+            return 1.0
+        else:
+            return 0.0
+    else:
+        travelled_distance = max(travelled_distance, optimal_distance)
+        return optimal_distance / travelled_distance
+
+
 class ObjectNaviThorGridTask(Task[IThorEnvironment]):
     """Defines the object navigation task in AI2-THOR.
 
