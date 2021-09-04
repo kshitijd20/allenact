@@ -5,6 +5,7 @@ import sys
 import urllib
 import urllib.request
 import warnings
+import copy
 from collections import defaultdict
 
 # noinspection PyUnresolvedReferences
@@ -97,7 +98,7 @@ def read_metric_file(metric_file):
     challenge_metrics = {"episodes" : {}}
     for episode in allenact_val_metrics:
         episode_metrics = {}
-        #episode_metrics["rnn"] = episode["task_info"]["rnn"]
+        episode_metrics["rnn"] = episode["rnn"]
         #print(episode["followed_path"])
         episode_metrics["trajectory"] = [{
             "x" : p["x"],
@@ -136,7 +137,193 @@ def read_metric_file(metric_file):
 
     print("number of episodes ", num_episodes, "average episode length ", challenge_metrics["ep_len"] )
 
-def trajectory_walker_objectnav():
+def random_objectnav_metadata_extraction():
+    open_x_displays = []
+    try:
+        open_x_displays = get_open_x_displays()
+    except (AssertionError, IOError):
+        pass
+
+
+    # Define Task sampler 
+    objectnav_task_sampler = (
+        ObjectNavThorPPOExperimentConfig.make_sampler_fn(
+            loop_dataset = False,
+            mode="valid",
+            seed=12,
+            x_display=open_x_displays[0] if len(open_x_displays) != 0 else None,
+            scenes=ObjectNavThorPPOExperimentConfig.TRAIN_SCENES,
+            scene_directory = os.path.join(os.getcwd(), "datasets/ithor-objectnav/train/episodes"),
+            object_types= ObjectNavThorPPOExperimentConfig.OBJECT_TYPES,
+            env_args= ObjectNavThorPPOExperimentConfig.ENV_ARGS,
+            max_steps= ObjectNavThorPPOExperimentConfig.MAX_STEPS,
+            sensors= ObjectNavThorPPOExperimentConfig.SENSORS,
+            action_space= gym.spaces.Discrete(
+                len(ObjectNaviThorGridTask.class_action_names())
+            ),
+            rewards_config = ObjectNavThorPPOExperimentConfig.REWARD_CONFIG,
+        )
+    )
+
+    # Define model and load state dict
+    tmpdir = "/home/ubuntu/projects/allenact/storage_default/objectnav_ithor_baseline_rs30/checkpoints/ObjectNaviThorPPOResnetGRU/2021-09-01_00-52-40"
+    ckpt_string = "exp_ObjectNaviThorPPOResnetGRU__stage_00__steps_000050025710"
+    ckpt_path = os.path.join(
+            tmpdir, ckpt_string + ".pt"
+        )
+ 
+    state_dict = torch.load(
+        ckpt_path,
+        map_location="cpu",
+    )
+    mode='valid'
+    nprocesses = 1
+    sensor_preprocessor_graph = (
+            SensorPreprocessorGraph(
+                source_observation_spaces=SensorSuite(ObjectNavThorPPOExperimentConfig.SENSORS).observation_spaces,
+                preprocessors=ObjectNavThorPPOExperimentConfig.PREPROCESSORS,
+            )
+            if mode == "train"
+            or (
+                (isinstance(nprocesses, int) and nprocesses > 0)
+                or (isinstance(nprocesses, Sequence) and sum(nprocesses) > 0)
+            )
+            else None
+        )
+    walkthrough_model = ObjectNavThorPPOExperimentConfig.create_model(sensor_preprocessor_graph=sensor_preprocessor_graph)
+    random_model = ObjectNavThorPPOExperimentConfig.create_model(sensor_preprocessor_graph=sensor_preprocessor_graph)
+    walkthrough_model.load_state_dict(state_dict["model_state_dict"])
+    print("Model Loaded")
+
+    # 
+
+    rollout_storage = RolloutStorage(
+            num_steps=1,
+            num_samplers=1,
+            actor_critic=walkthrough_model,
+            only_store_first_and_last_in_memory=False,
+        )
+    memory = rollout_storage.pick_memory_step(0)
+    masks = rollout_storage.masks[:1]
+
+
+    random_rollout_storage = RolloutStorage(
+            num_steps=1,
+            num_samplers=1,
+            actor_critic=random_model,
+            only_store_first_and_last_in_memory=False,
+        )
+    random_memory = random_rollout_storage.pick_memory_step(0)
+    random_masks = random_rollout_storage.masks[:1]
+
+    binned_map_losses = []
+    semantic_map_losses = []
+    num_tasks = 1000
+    count = 0
+    success_count =0 
+    task_metrics = []
+    random_task_metrics = []
+    for i in tqdm(range(num_tasks)):
+        masks = 0 * masks
+        random_masks = 0 * random_masks
+        task = objectnav_task_sampler.next_task()
+        print((objectnav_task_sampler.max_tasks))
+        if (objectnav_task_sampler.max_tasks)==0:
+            break
+        def add_step_dim(input):
+            if isinstance(input, torch.Tensor):
+                return input.unsqueeze(0)
+            elif isinstance(input, Dict):
+                return {k: add_step_dim(v) for k, v in input.items()}
+            else:
+                raise NotImplementedError
+
+        batch = add_step_dim(sensor_preprocessor_graph.get_observations(batch_observations([task.get_observations()])))
+        #print(batch)
+        rnn_outputs = []
+        ac_probs = []
+        ac_vals = [] 
+        rewards = []
+
+        random_rnn_outputs = []
+        random_ac_probs = []
+        random_ac_vals = [] 
+        episode_len = 0
+        while not task.is_done():
+            episode_len+=1
+            random_batch = copy.deepcopy(batch)
+            ac_out, memory = cast(
+                Tuple[ActorCriticOutput, Memory],
+                walkthrough_model.forward(
+                    observations=batch,
+                    memory=memory,
+                    prev_actions=None,
+                    masks=masks,
+                ),
+            )
+
+            random_ac_out, random_memory = cast(
+                Tuple[ActorCriticOutput, Memory],
+                random_model.forward(
+                    observations=random_batch,
+                    memory=random_memory,
+                    prev_actions=None,
+                    masks=random_masks,
+                ),
+            )
+            #print(memory)
+            masks = masks.fill_(1.0)
+            random_masks = random_masks.fill_(1.0)
+            outputs = task.step(
+                action=ac_out.distributions.sample().item()
+            )
+
+            random_rnn_outputs.append(random_memory['rnn'][0].detach().cpu().numpy().squeeze().tolist())
+            random_ac_probs.append(random_ac_out.distributions.probs.detach().cpu().numpy().squeeze().tolist())
+            random_ac_vals.append(random_ac_out.values.detach().cpu().numpy().squeeze().tolist())
+
+
+            rnn_outputs.append(memory['rnn'][0].detach().cpu().numpy().squeeze().tolist())
+            ac_probs.append(ac_out.distributions.probs.detach().cpu().numpy().squeeze().tolist())
+            ac_vals.append(ac_out.values.detach().cpu().numpy().squeeze().tolist())
+            #print(outputs.reward)
+            #print(outputs.reward)
+            #print(outputs.info)
+            #print(ac_out.distributions.sample().item())
+            #print(ac_out.distributions.probs[0][0])
+            #print(ac_out.distributions.logits[0][0][0])
+            #print(ac_out.values[0][0][0],outputs.reward)
+            #print(task.task_info)
+            
+            obs = outputs.observation
+            batch = add_step_dim(sensor_preprocessor_graph.get_observations(batch_observations([obs])))
+        print(task.task_info['id'],task._success,episode_len)
+        count+=1
+        if task._success:
+            success_count+=1
+
+        random_task_info = copy.deepcopy(task.task_info)
+
+        task.task_info['rnn'] = rnn_outputs
+        task.task_info['ac_probs'] = ac_probs
+        task.task_info['ac_vals'] = ac_vals
+        task_metrics.append(task.task_info)
+
+        random_task_info['rnn'] = random_rnn_outputs
+        random_task_info['ac_probs'] = random_ac_probs
+        random_task_info['ac_vals'] = random_ac_vals
+        random_task_metrics.append(random_task_info)
+
+    
+    print("Success is ", success_count/count)
+    with open('./train_random.json', 'w') as fout:
+        json.dump(random_task_metrics, fout)
+    
+    with open('./train_' + ckpt_string + '.json', 'w') as fout:
+        json.dump(task_metrics, fout)
+
+
+def pretrained_objectnav_metadata_extraction():
     open_x_displays = []
     try:
         open_x_displays = get_open_x_displays()
@@ -209,7 +396,7 @@ def trajectory_walker_objectnav():
     count = 0
     success_count =0 
     task_metrics = []
-    for i in tqdm(range(10)):
+    for i in tqdm(range(5)):
         masks = 0 * masks
         task = objectnav_task_sampler.next_task()
         print((objectnav_task_sampler.max_tasks))
@@ -225,7 +412,10 @@ def trajectory_walker_objectnav():
 
         batch = add_step_dim(sensor_preprocessor_graph.get_observations(batch_observations([task.get_observations()])))
         #print(batch)
-
+        rnn_outputs = []
+        ac_probs = []
+        ac_vals = [] 
+        rewards = []
         while not task.is_done():
             ac_out, memory = cast(
                 Tuple[ActorCriticOutput, Memory],
@@ -241,26 +431,34 @@ def trajectory_walker_objectnav():
             outputs = task.step(
                 action=ac_out.distributions.sample().item()
             )
+
+            rnn_outputs.append(memory['rnn'][0].detach().cpu().numpy().squeeze().tolist())
+            ac_probs.append(ac_out.distributions.probs.detach().cpu().numpy().squeeze().tolist())
+            ac_vals.append(ac_out.values.detach().cpu().numpy().squeeze().tolist())
             #print(outputs.reward)
             #print(outputs.info)
             #print(ac_out.distributions.sample().item())
-            #print(ac_out.distributions.probs)
-            #print(ac_out.distributions.logits)
+            #print(ac_out.distributions.probs[0][0])
+            #print(ac_out.distributions.logits[0][0][0])
+            #print(ac_out.values[0][0][0],outputs.reward)
             #print(task.task_info)
             
             obs = outputs.observation
             batch = add_step_dim(sensor_preprocessor_graph.get_observations(batch_observations([obs])))
-        print(task.task_info['id'],task._success)
+        #print(task.task_info['id'],task._success)
         count+=1
         if task._success:
             success_count+=1
+        task.task_info['rnn'] = rnn_outputs
+        task.task_info['ac_probs'] = ac_probs
+        task.task_info['ac_vals'] = ac_vals
         task_metrics.append(task.task_info)
     
-    print(success_count/count)
+    print("Success is ", success_count/count)
     with open('temp.json', 'w') as fout:
         json.dump(task_metrics, fout)
 
-    read_metric_file('temp.json')
+    #read_metric_file('temp.json')
 
 def test_pretrained_rearrange_walkthrough_mapping_agent( tmpdir):
     try:
@@ -380,4 +578,4 @@ def test_pretrained_rearrange_walkthrough_mapping_agent( tmpdir):
 
 if __name__ == "__main__":
     #test_pretrained_rearrange_walkthrough_mapping_agent("tmp_out")  # Used for local debugging
-    trajectory_walker_objectnav()
+    random_objectnav_metadata_extraction()
