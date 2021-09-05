@@ -16,7 +16,11 @@ from allenact.utils.system import get_logger
 from allenact_plugins.ithor_plugin.ithor_constants import VISIBILITY_DISTANCE, FOV
 from allenact_plugins.ithor_plugin.ithor_util import round_to_factor
 from ai2thor.util import metrics
-from allenact.utils.cache_utils import DynamicDistanceCache
+from allenact.utils.cache_utils import (
+    DynamicDistanceCache,
+    pos_to_str_for_cache,
+    str_to_pos_for_cache,
+)
 
 
 class IThorEnvironment(object):
@@ -648,6 +652,87 @@ class IThorEnvironment(object):
         currently reachable."""
         self.step({"action": "GetReachablePositions"})
         return self.last_event.metadata["actionReturn"]  # type:ignore
+
+    def path_from_point_to_point(
+        self, position: Dict[str, float], target: Dict[str, float], allowedError: float
+    ) -> Optional[List[Dict[str, float]]]:
+        try:
+            return self.controller.step(
+                action="GetShortestPathToPoint",
+                position=position,
+                x=target["x"],
+                y=target["y"],
+                z=target["z"],
+                allowedError=allowedError,
+            ).metadata["actionReturn"]["corners"]
+        except Exception:
+            get_logger().debug(
+                "Failed to find path for {} in {}. Start point {}, agent state {}.".format(
+                    target,
+                    self.controller.last_event.metadata["sceneName"],
+                    position,
+                    self.agent_state(),
+                )
+            )
+            return None
+
+    def distance_from_point_to_point(
+        self, position: Dict[str, float], target: Dict[str, float], allowed_error: float
+    ) -> float:
+        path = self.path_from_point_to_point(position, target, allowed_error)
+        if path:
+            # Because `allowed_error != 0` means that the path returned above might not start
+            # or end exactly at the position/target points, we explictly add any offset there is.
+            s_dist = math.sqrt(
+                (position["x"] - path[0]["x"]) ** 2
+                + (position["z"] - path[0]["z"]) ** 2
+            )
+            t_dist = math.sqrt(
+                (target["x"] - path[-1]["x"]) ** 2 + (target["z"] - path[-1]["z"]) ** 2
+            )
+            return metrics.path_distance(path) + s_dist + t_dist
+        return -1.0
+
+    def distance_to_point(self, target: Dict[str, float], agent_id: int = 0) -> float:
+        """Minimal geodesic distance to end point from agent's current
+        location.
+        It might return -1.0 for unreachable targets.
+        """
+        assert 0 <= agent_id < self.agent_count
+        assert (
+            self.all_metadata_available
+        ), "`distance_to_object_type` cannot be called when `self.all_metadata_available` is `False`."
+
+        def retry_dist(position: Dict[str, float], target: Dict[str, float]):
+            allowed_error = 0.05
+            debug_log = ""
+            d = -1.0
+            while allowed_error < 2.5:
+                d = self.distance_from_point_to_point(position, target, allowed_error)
+                if d < 0:
+                    debug_log = (
+                        f"In scene {self.scene_name}, could not find a path from {position} to {target} with"
+                        f" {allowed_error} error tolerance. Increasing this tolerance to"
+                        f" {2 * allowed_error} any trying again."
+                    )
+                    allowed_error *= 2
+                else:
+                    break
+            if d < 0:
+                get_logger().warning(
+                    f"In scene {self.scene_name}, could not find a path from {position} to {target}"
+                    f" with {allowed_error} error tolerance. Returning a distance of -1."
+                )
+            elif debug_log != "":
+                get_logger().debug(debug_log)
+            return d
+
+        return self.distance_cache.find_distance(
+            self.scene_name,
+            self.controller.last_event.events[agent_id].metadata["agent"]["position"],
+            target,
+            retry_dist,
+        )
 
     def agent_state(self, agent_id: int = 0) -> Dict:
         """Return agent position, rotation and horizon."""
