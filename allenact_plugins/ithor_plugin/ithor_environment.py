@@ -22,6 +22,19 @@ from allenact.utils.cache_utils import (
     str_to_pos_for_cache,
 )
 
+from types import FunctionType
+from inspect import getmembers
+def api(obj):
+    return [name for name in dir(obj) if name[0] != '_']
+
+def attrs(obj):
+     disallowed_properties = {
+       name for name, value in getmembers(type(obj)) 
+         if isinstance(value, (property, FunctionType))}
+     return {
+       name: getattr(obj, name) for name in api(obj) 
+         if name not in disallowed_properties and hasattr(obj, name)}
+
 
 class IThorEnvironment(object):
     """Wrapper for the ai2thor controller providing additional functionality
@@ -310,8 +323,13 @@ class IThorEnvironment(object):
             gridSize=self._grid_size,
             rotateStepDegrees=self._rotate_step_degrees,
             visibilityDistance=self._visibility_distance,
+            
         )
-
+        print("------------------------------------------------------------------------------------------------------")
+        print("------------------------------------------------------------------------------------------------------")
+        print(attrs(self.controller))
+        print("------------------------------------------------------------------------------------------------------")
+        print("------------------------------------------------------------------------------------------------------")
         if (
             self._start_player_screen_height,
             self._start_player_screen_width,
@@ -376,7 +394,11 @@ class IThorEnvironment(object):
                 **kwargs,
             }
         )
-
+        print("------------------------------------------------------------------------------------------------------")
+        print("------------------------------------------------------------------------------------------------------")
+        print(attrs(self.controller))
+        print("------------------------------------------------------------------------------------------------------")
+        print("------------------------------------------------------------------------------------------------------")
         if self.object_open_speed != 1.0:
             self.controller.step(
                 {"action": "ChangeOpenSpeed", "x": self.object_open_speed}
@@ -661,7 +683,7 @@ class IThorEnvironment(object):
                 action="GetShortestPathToPoint",
                 position=position,
                 x=target["x"],
-                y=target["y"],
+                y=0.9019261598587036,#target["y"],
                 z=target["z"],
                 allowedError=allowedError,
             ).metadata["actionReturn"]["corners"]

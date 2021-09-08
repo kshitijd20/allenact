@@ -6,7 +6,7 @@ import gym
 import gym.spaces
 import numpy as np
 import torch
-
+import quaternion 
 from allenact.base_abstractions.sensor import Sensor
 from allenact.embodiedai.sensors.vision_sensors import RGBSensor
 from allenact.base_abstractions.task import Task

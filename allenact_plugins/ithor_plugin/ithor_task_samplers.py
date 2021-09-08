@@ -2,7 +2,7 @@ import copy
 import random
 import gzip
 import json
-from typing import List, Optional, Union, Dict, Any, cast
+from typing import List, Optional, Union, Dict, Any, cast, Tuple
 
 import gym
 from allenact.utils.cache_utils import str_to_pos_for_cache
@@ -37,7 +37,7 @@ class ObjectNavTaskSampler(TaskSampler):
         self.sensors = sensors
         self.max_steps = max_steps
         self._action_space = action_space
-
+        
         self.scene_counter: Optional[int] = None
         self.scene_order: Optional[List[str]] = None
         self.scene_id: Optional[int] = None
@@ -222,10 +222,14 @@ class ObjectNaviThorDatasetTaskSampler(TaskSampler):
         self.rewards_config = rewards_config
         self.env_args = env_args
         self.scenes = scenes
+        
+
         self.episodes = {
             scene: ObjectNaviThorDatasetTaskSampler.load_dataset(scene, scene_directory)
             for scene in scenes
         }
+
+        
         self.env_class = env_class
         self.object_types = [
             ep["object_type"] for scene in self.episodes for ep in self.episodes[scene]
@@ -441,9 +445,15 @@ class PointNaviThorDatasetTaskSampler(TaskSampler):
         self.env_args = env_args
         self.scenes = scenes
         self.shuffle_dataset: bool = shuffle_dataset
+        print("------------------------------------------------------------------------------------------------------")
+        print("------------------------------------------------------------------------------------------------------")
+        print("Inside pointnav ithor task sampler")
+        print(scene_directory)
+        print("------------------------------------------------------------------------------------------------------")
+        print("------------------------------------------------------------------------------------------------------")
         self.episodes = {
             scene: ObjectNaviThorDatasetTaskSampler.load_dataset(
-                scene, scene_directory
+                scene, scene_directory + "/episodes/"
             )
             for scene in scenes
         }
