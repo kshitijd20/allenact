@@ -358,7 +358,7 @@ class ObjectNaviThorGridTask(Task[IThorEnvironment]):
 
 
 class PointNaviThorTask(Task[IThorEnvironment]):
-    _actions = (MOVE_AHEAD, ROTATE_LEFT, ROTATE_RIGHT, END)
+    _actions = (MOVE_AHEAD, ROTATE_LEFT, ROTATE_RIGHT, LOOK_DOWN, LOOK_UP, END)
 
     def __init__(
         self,
@@ -390,6 +390,7 @@ class PointNaviThorTask(Task[IThorEnvironment]):
 
         self.task_info["followed_path"] = [self.env.agent_state()]
         self.task_info["action_names"] = self.action_names()
+        self.task_info["taken_actions"] = []
 
     @property
     def action_space(self):
@@ -410,7 +411,7 @@ class PointNaviThorTask(Task[IThorEnvironment]):
         action = cast(int, action)
 
         action_str = self.class_action_names()[action]
-
+        self.task_info["taken_actions"].append(action_str)
         if action_str == END:
             self._took_end_action = True
             self._success = self._is_goal_in_range()

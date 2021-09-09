@@ -31,14 +31,14 @@ from allenact.utils.experiment_utils import (
 from allenact_plugins.ithor_plugin.ithor_sensors import (
     RGBSensorThor,
     GoalObjectTypeThorSensor,
-    GPSCompassSensoriThor
+    GPSCompassSensorIThor
 )
 from allenact_plugins.ithor_plugin.ithor_task_samplers import (
     ObjectNaviThorDatasetTaskSampler,
     PointNaviThorDatasetTaskSampler
 )
 from allenact_plugins.ithor_plugin.ithor_tasks import ObjectNaviThorGridTask,PointNaviThorTask
-from projects.pointnav_baselines.models.object_nav_models import (
+from projects.pointnav_baselines.models.point_nav_models import (
     ResnetTensorPointNavActorCritic,
 )
 
@@ -80,7 +80,7 @@ class PointNavThorPPOExperimentConfig(ExperimentConfig):
             use_resnet_normalization=True,
             uuid="rgb_lowres",
         ),
-        GPSCompassSensoriThor(),
+        GPSCompassSensorIThor(),
     ]
 
     PREPROCESSORS = [
@@ -213,7 +213,7 @@ class PointNavThorPPOExperimentConfig(ExperimentConfig):
     @classmethod
     def create_model(cls, **kwargs) -> nn.Module:
         return ResnetTensorPointNavActorCritic(
-            action_space=gym.spaces.Discrete(len(PointNavTask.class_action_names())),
+            action_space=gym.spaces.Discrete(len(PointNaviThorTask.class_action_names())),
             observation_space=kwargs["sensor_preprocessor_graph"].observation_spaces,
             goal_sensor_uuid="target_coordinates_ind",
             rgb_resnet_preprocessor_uuid="rgb_resnet",
@@ -284,7 +284,7 @@ class PointNavThorPPOExperimentConfig(ExperimentConfig):
             deterministic_cudnn=deterministic_cudnn,
         )
         res["scene_directory"] = os.path.join(
-            os.getcwd(), "datasets/ithor-objectnav/train/episodes"
+            os.getcwd(), "datasets/ithor-pointnav/train/"
         )
         res["loop_dataset"] = True
         res["scene_period"] = "manual"
@@ -314,7 +314,7 @@ class PointNavThorPPOExperimentConfig(ExperimentConfig):
         )
         res["loop_dataset"] = False
         res["scene_directory"] = os.path.join(
-            os.getcwd(), "datasets/ithor-objectnav/val/episodes"
+            os.getcwd(), "datasets/ithor-pointnav/val/"
         )
         res["env_args"] = {}
         res["env_args"].update(self.ENV_ARGS)
@@ -341,7 +341,7 @@ class PointNavThorPPOExperimentConfig(ExperimentConfig):
             deterministic_cudnn=deterministic_cudnn,
         )
         res["scene_directory"] = os.path.join(
-            os.getcwd(), "datasets/ithor-objectnav/val/episodes"
+            os.getcwd(), "datasets/ithor-pointnav/val/"
         )
         res["loop_dataset"] = False
         res["env_args"] = {}
