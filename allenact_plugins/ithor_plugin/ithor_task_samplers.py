@@ -13,6 +13,13 @@ from allenact.utils.system import get_logger
 from allenact_plugins.ithor_plugin.ithor_environment import IThorEnvironment
 from allenact_plugins.ithor_plugin.ithor_tasks import ObjectNaviThorGridTask, PointNaviThorTask
 
+def find_dict_index_in_list(lst, key, value):
+    for i, dic in enumerate(lst):
+        if dic[key] == value:
+            return i
+    a=-1
+    assert a==0
+
 
 class ObjectNavTaskSampler(TaskSampler):
     def __init__(
@@ -345,6 +352,65 @@ class ObjectNaviThorDatasetTaskSampler(TaskSampler):
         """
         return float("inf") if self.max_tasks is None else self.max_tasks
 
+    def next_task_from_info(self,scene,episode_id):
+
+        scene = scene
+        episode_index = find_dict_index_in_list(self.episodes[scene], 'id', episode_id)
+        episode = self.episodes[scene][episode_index]
+        if self.env is None:
+            self.env = self._create_environment()
+
+        if scene.replace("_physics", "") != self.env.scene_name.replace("_physics", ""):
+            self.env.reset(scene_name=scene)
+        else:
+            self.env.reset_object_filter()
+
+        self.env.set_object_filter(
+            object_ids=[
+                o["objectId"]
+                for o in self.env.last_event.metadata["objects"]
+                if o["objectType"] == episode["object_type"]
+            ]
+        )
+
+        task_info = {"scene": scene, "object_type": episode["object_type"]}
+        if len(task_info) == 0:
+            get_logger().warning(
+                "Scene {} does not contain any"
+                " objects of any of the types {}.".format(scene, self.object_types)
+            )
+        task_info["initial_position"] = episode["initial_position"]
+        task_info["initial_orientation"] = episode["initial_orientation"]
+        task_info["initial_horizon"] = episode.get("initial_horizon", 0)
+        task_info["distance_to_target"] = episode.get("shortest_path_length")
+        task_info["path_to_target"] = episode.get("shortest_path")
+        task_info["object_type"] = episode["object_type"]
+        task_info["id"] = episode["id"]
+        if self.allow_flipping and random.random() > 0.5:
+            task_info["mirrored"] = True
+        else:
+            task_info["mirrored"] = False
+
+        self.episode_index += 1
+        if self.max_tasks is not None:
+            self.max_tasks -= 1
+        if not self.env.teleport(
+            position=episode["initial_position"],
+            rotation=episode["initial_orientation"],
+            horizon=episode.get("initial_horizon", 0),
+        ):
+            return self.next_task()
+        self._last_sampled_task = ObjectNaviThorGridTask(
+            env=self.env,
+            sensors=self.sensors,
+            task_info=task_info,
+            max_steps=self.max_steps,
+            action_space=self._action_space,
+            reward_configs=self.rewards_config,
+        )
+
+        return self._last_sampled_task
+
     def next_task(
         self, force_advance_scene: bool = False
     ) -> Optional[ObjectNaviThorGridTask]:
@@ -523,19 +589,11 @@ class PointNaviThorDatasetTaskSampler(TaskSampler):
         """
         return True
 
-    def next_task(self, force_advance_scene: bool = False) -> Optional[PointNaviThorTask]:
-        if self.max_tasks is not None and self.max_tasks <= 0:
-            return None
-
-        if self.episode_index >= len(self.episodes[self.scenes[self.scene_index]]):
-            self.scene_index = (self.scene_index + 1) % len(self.scenes)
-            # shuffle the new list of episodes to train on
-            if self.shuffle_dataset:
-                random.shuffle(self.episodes[self.scenes[self.scene_index]])
-            self.episode_index = 0
-
-        scene = self.scenes[self.scene_index]
-        episode = self.episodes[scene][self.episode_index]
+    def next_task_from_info(self,scene,episode_id):
+        scene = scene
+        episode_index = find_dict_index_in_list(self.episodes[scene], 'id', episode_id)
+        episode = self.episodes[scene][episode_index]
+        
         if self.env is not None:
             if scene.replace("_physics", "") != self.env.scene_name.replace(
                 "_physics", ""
@@ -591,124 +649,6 @@ class PointNaviThorDatasetTaskSampler(TaskSampler):
 
         return self._last_sampled_task
 
-    def reset(self):
-        self.episode_index = 0
-        self.scene_index = 0
-        self.max_tasks = self.reset_tasks
-
-    def set_seed(self, seed: int):
-        self.seed = seed
-        if seed is not None:
-            set_seed(seed)
-
-    @property
-    def length(self) -> Union[int, float]:
-        """Length.
-        # Returns
-        Number of total tasks remaining that can be sampled.
-        Can be float('inf').
-        """
-        return float("inf") if self.max_tasks is None else self.max_tasks
-
-class PointNaviThorDatasetTaskSampler(TaskSampler):
-    def __init__(
-        self,
-        scenes: List[str],
-        scene_directory: str,
-        sensors: List[Sensor],
-        max_steps: int,
-        env_args: Dict[str, Any],
-        action_space: gym.Space,
-        rewards_config: Dict,
-        seed: Optional[int] = None,
-        deterministic_cudnn: bool = False,
-        loop_dataset: bool = True,
-        shuffle_dataset: bool = True,
-        allow_flipping=False,
-        env_class=IThorEnvironment,
-        **kwargs,
-    ) -> None:
-        self.rewards_config = rewards_config
-        self.env_args = env_args
-        self.scenes = scenes
-        self.shuffle_dataset: bool = shuffle_dataset
-        print("------------------------------------------------------------------------------------------------------")
-        print("------------------------------------------------------------------------------------------------------")
-        print("Inside pointnav ithor task sampler")
-        print(scene_directory)
-        print("------------------------------------------------------------------------------------------------------")
-        print("------------------------------------------------------------------------------------------------------")
-        self.episodes = {
-            scene: ObjectNaviThorDatasetTaskSampler.load_dataset(
-                scene, scene_directory + "/episodes/"
-            )
-            for scene in scenes
-        }
-        self.env_class = env_class
-        self.env: Optional[IThorEnvironment] = None
-        self.sensors = sensors
-        self.max_steps = max_steps
-        self._action_space = action_space
-        self.allow_flipping = allow_flipping
-        self.scene_counter: Optional[int] = None
-        self.scene_order: Optional[List[str]] = None
-        self.scene_id: Optional[int] = None
-        # get the total number of tasks assigned to this process
-        if loop_dataset:
-            self.max_tasks = None
-        else:
-            self.max_tasks = sum(len(self.episodes[scene]) for scene in self.episodes)
-        self.reset_tasks = self.max_tasks
-        self.scene_index = 0
-        self.episode_index = 0
-
-        self._last_sampled_task: Optional[PointNaviThorTask] = None
-
-        self.seed: Optional[int] = None
-        self.set_seed(seed)
-
-        if deterministic_cudnn:
-            set_deterministic_cudnn()
-
-        self.reset()
-
-    def _create_environment(self) -> IThorEnvironment:
-        env = self.env_class(
-            make_agents_visible=False,
-            object_open_speed=0.05,
-            restrict_to_initially_reachable_points=False,
-            **self.env_args,
-        )
-        return env
-
-    @property
-    def __len__(self) -> Union[int, float]:
-        """Length.
-        # Returns
-        Number of total tasks remaining that can be sampled. Can be float('inf').
-        """
-        return float("inf") if self.max_tasks is None else self.max_tasks
-
-    @property
-    def total_unique(self) -> Optional[Union[int, float]]:
-        return self.reset_tasks
-
-    @property
-    def last_sampled_task(self) -> Optional[PointNaviThorTask]:
-        return self._last_sampled_task
-
-    def close(self) -> None:
-        if self.env is not None:
-            self.env.stop()
-
-    @property
-    def all_observation_spaces_equal(self) -> bool:
-        """Check if observation spaces equal.
-        # Returns
-        True if all Tasks that can be sampled by this sampler have the
-            same observation space. Otherwise False.
-        """
-        return True
 
     def next_task(self, force_advance_scene: bool = False) -> Optional[PointNaviThorTask]:
         if self.max_tasks is not None and self.max_tasks <= 0:
@@ -796,4 +736,3 @@ class PointNaviThorDatasetTaskSampler(TaskSampler):
         Can be float('inf').
         """
         return float("inf") if self.max_tasks is None else self.max_tasks
-
