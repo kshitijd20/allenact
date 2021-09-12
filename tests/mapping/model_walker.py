@@ -1,3 +1,5 @@
+from __future__ import print_function  # for Python2
+
 import os
 import platform
 import random
@@ -7,6 +9,7 @@ import urllib.request
 import warnings
 import copy
 import readchar
+import torch
 from collections import defaultdict
 
 # noinspection PyUnresolvedReferences
@@ -85,6 +88,9 @@ from allenact_plugins.ithor_plugin.ithor_tasks import ObjectNaviThorGridTask,Poi
 from projects.objectnav_baselines.models.object_nav_models import (
     ResnetTensorObjectNavActorCritic,
 )
+import sys
+
+
 
 import json
 
@@ -119,7 +125,7 @@ def get_collected_episodes(metric_file):
     with open(metric_file, "r") as read_file:
         allenact_metrics = json.load(read_file)
     collected_episodes = []
-    for episode in allenact_val_metrics:
+    for episode in allenact_metrics:
         collected_episodes.append([episode["id"]])
     return collected_episodes
     
@@ -315,7 +321,7 @@ def get_pointnav_ithor_default_resnet(pretrained=False):
 
     return walkthrough_model,task_sampler,sensor_preprocessor_graph
 
-def get_pointnav_ithor_default_resnet(pretrained=False):
+def get_pointnav_ithor_default_simpleconv(pretrained=False):
 
     from projects.tutorials.point_nav_ithor_ppo_simpleconv import PointNavThorPPOExperimentConfig
 
@@ -408,36 +414,35 @@ def walk_along_active_model(active_model_id, follower_model_ids, save_dir, save_
         follower_task_samplers[follower_model_id],\
         follower_preprocessor_graphs[follower_model_id] = get_model_details(follower_model_id)
 
-    all_models = copy.deepcopy(follower_models) 
+    all_models = (follower_models) 
     all_models[active_model_id] = active_model
-
-
 
     rollout_storage = {}
     memory = {}
     masks = {}
     task_metrics = {}
     for model_id,model in all_models.items():
+        model.eval()
         rollout_storage[model_id] = RolloutStorage(
                 num_steps=1,
                 num_samplers=1,
                 actor_critic=model,
-                only_store_first_and_last_in_memory=False,
+                only_store_first_and_last_in_memory=True,
             )
         memory[model_id] = rollout_storage[model_id].pick_memory_step(0)
         masks[model_id] = rollout_storage[model_id].masks[:1]
         task_metrics[model_id] = []
 
-    num_tasks = 1000
+    num_tasks = 360
     count = 0
     success_count =0 
     for i in tqdm(range(num_tasks)):
-
         for model_id,model in all_models.items():
             masks[model_id]  = 0 * masks[model_id]
         
         active_task = active_task_sampler.next_task()
-        
+        if not i%5==0:
+            continue
         follower_tasks = {}
         for follower_model_id in follower_model_ids:
             scene = active_task.task_info['scene']
@@ -457,7 +462,7 @@ def walk_along_active_model(active_model_id, follower_model_ids, save_dir, save_
             follower_preprocessor_graphs[follower_model_id].get_observations(batch_observations([follower_tasks[follower_model_id].get_observations()]))
             follower_batches[follower_model_id] = add_step_dim(batch)
         
-        all_batches = copy.deepcopy(follower_batches) 
+        all_batches = (follower_batches) 
         all_batches[active_model_id] = active_batch
 
         rnn_outputs,ac_probs,ac_vals = {},{},{}
@@ -474,15 +479,16 @@ def walk_along_active_model(active_model_id, follower_model_ids, save_dir, save_
             
             ac_out = {}
             for model_id,model in all_models.items():
-                ac_out[model_id], memory[model_id] = cast(
-                    Tuple[ActorCriticOutput, Memory],
-                    model.forward(
-                        observations=all_batches[model_id],
-                        memory=memory[model_id],
-                        prev_actions=None,
-                        masks=masks[model_id],
-                    ),
-                )
+                with torch.no_grad():
+                    ac_out[model_id], memory[model_id] = cast(
+                        Tuple[ActorCriticOutput, Memory],
+                        model.forward(
+                            observations=all_batches[model_id],
+                            memory=memory[model_id],
+                            prev_actions=None,
+                            masks=masks[model_id],
+                        ),
+                    )
 
                 masks[model_id] = masks[model_id].fill_(1.0)
                 rnn_outputs[model_id].append(memory[model_id]['rnn'][0].detach().cpu().numpy().squeeze().tolist())
@@ -507,17 +513,19 @@ def walk_along_active_model(active_model_id, follower_model_ids, save_dir, save_
                 follower_preprocessor_graphs[follower_model_id].get_observations(batch_observations([obs]))
                 follower_batches[follower_model_id] = add_step_dim(batch)
 
-            all_batches = copy.deepcopy(follower_batches) 
+            all_batches = (follower_batches) 
             all_batches[active_model_id] = active_batch
             
 
             episode_len+=1
 
+        print("======================================================================================================================")
         print(active_task.task_info['id'],active_task._success,episode_len)
         count+=1
         if active_task._success:
             success_count+=1
         task_info ={}
+
         for model_id,model in all_models.items():
             if model_id == active_model_id:
                 task_info[model_id] = copy.deepcopy(active_task.task_info)
@@ -626,15 +634,16 @@ def walk_along_human(follower_model_ids, save_dir):
             
             ac_out = {}
             for model_id,model in all_models.items():
-                ac_out[model_id], memory[model_id] = cast(
-                    Tuple[ActorCriticOutput, Memory],
-                    model.forward(
-                        observations=all_batches[model_id],
-                        memory=memory[model_id],
-                        prev_actions=None,
-                        masks=masks[model_id],
-                    ),
-                )
+                with torch.no_grad():
+                    ac_out[model_id], memory[model_id] = cast(
+                        Tuple[ActorCriticOutput, Memory],
+                        model.forward(
+                            observations=all_batches[model_id],
+                            memory=memory[model_id],
+                            prev_actions=None,
+                            masks=masks[model_id],
+                        ),
+                    )
 
                 masks[model_id] = masks[model_id].fill_(1.0)
                 rnn_outputs[model_id].append(memory[model_id]['rnn'][0].detach().cpu().numpy().squeeze().tolist())
@@ -650,6 +659,8 @@ def walk_along_human(follower_model_ids, save_dir):
                 outputs = follower_tasks[follower_model_id].step(
                     action = next_action
                 )
+                if "pointnav" in follower_model_id:
+                    print("Distance to pointnav target", follower_tasks[follower_model_id].dist_to_target())
                 obs = outputs.observation
                 batch = \
                 follower_preprocessor_graphs[follower_model_id].get_observations(batch_observations([obs]))
@@ -713,6 +724,7 @@ walk_along_active_model(active_model_id, follower_model_ids, save_dir)
 
 """
 
+"""
 follower_model_ids = ["pointnav_ithor_default_resnet_random"
     ,"objectnav_ithor_default_resnet_random"
     ,"objectnav_ithor_default_resnet_pretrained"
@@ -721,4 +733,13 @@ follower_model_ids = ["pointnav_ithor_default_resnet_random"
 #follower_model_ids = ["objectnav_ithor_default_resnet_random"]
 save_dir = 'trajectory_metadata/active_human'
 walk_along_human(follower_model_ids, save_dir)
+"""
 
+
+active_model_id = "pointnav_ithor_default_simpleconv_pretrained"
+follower_model_ids = ["pointnav_ithor_default_simpleconv_random"
+    ,"objectnav_ithor_default_simpleconv_random"
+    ,"objectnav_ithor_default_simpleconv_pretrained"
+]
+save_dir = 'trajectory_metadata/active_' + active_model_id
+walk_along_active_model(active_model_id, follower_model_ids, save_dir)
