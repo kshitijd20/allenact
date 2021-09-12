@@ -41,8 +41,7 @@ from allenact_plugins.ithor_plugin.ithor_util import get_open_x_displays
 from allenact_plugins.ithor_plugin.ithor_util import get_open_x_displays
 from allenact_plugins.robothor_plugin.robothor_sensors import DepthSensorThor
 from constants import ABS_PATH_OF_TOP_LEVEL_DIR
-from projects.tutorials.object_nav_ithor_ppo_baseline import ObjectNavThorPPOExperimentConfig
-from projects.tutorials.point_nav_ithor_ppo_baseline import PointNavThorPPOExperimentConfig
+
 from math import ceil
 from typing import Dict, Any, List, Optional, Sequence
 import glob
@@ -87,11 +86,6 @@ from projects.objectnav_baselines.models.object_nav_models import (
     ResnetTensorObjectNavActorCritic,
 )
 
-from trajectory_features.trajectory_metadata import trajectory_metadata,trajectory_metadata_pointnav
-from trajectory_features.thor_utils import *
-from trajectory_features import __version__
-from trajectory_features.headless_controller import HeadlessController
-
 import json
 
 allenact_to_ai2thor_actions = {
@@ -121,7 +115,14 @@ def add_step_dim(input):
     else:
         raise NotImplementedError
 
-
+def get_collected_episodes(metric_file):
+    with open(metric_file, "r") as read_file:
+        allenact_metrics = json.load(read_file)
+    collected_episodes = []
+    for episode in allenact_val_metrics:
+        collected_episodes.append([episode["id"]])
+    return collected_episodes
+    
 def get_action_from_human():
     key2action = {
         "'q'": "MoveAhead", 
@@ -135,13 +136,16 @@ def get_action_from_human():
     key = repr(readchar.readchar())
     while key not in key2action.keys():
         key = repr(readchar.readchar())
-        print(1)
+        print("Press one of the action keys")
+        print(key2action)
 
     action = possible_actions.index(key2action[key])
     print("next action is ", action, key2action[key])
     return  action
 
 def get_objectnav_ithor_default_resnet(pretrained=False):
+
+    from projects.tutorials.object_nav_ithor_ppo_baseline import ObjectNavThorPPOExperimentConfig
     # Define Task sampler 
     objectnav_task_sampler = (
         ObjectNavThorPPOExperimentConfig.make_sampler_fn(
@@ -180,7 +184,7 @@ def get_objectnav_ithor_default_resnet(pretrained=False):
     walkthrough_model = ObjectNavThorPPOExperimentConfig.create_model(sensor_preprocessor_graph=sensor_preprocessor_graph)
     if pretrained:
         # Define model and load state dict
-        tmpdir = "/home/ubuntu/projects/allenact/pretrained_model_ckpts/objectnav_ithor_default"
+        tmpdir = "./pretrained_model_ckpts/"
         ckpt_string = "exp_ObjectNaviThorPPOResnetGRU__stage_00__steps_000050025710"
         ckpt_path = os.path.join(
                 tmpdir, ckpt_string + ".pt"
@@ -194,7 +198,66 @@ def get_objectnav_ithor_default_resnet(pretrained=False):
 
     return walkthrough_model,objectnav_task_sampler,sensor_preprocessor_graph
     
+def get_objectnav_ithor_default_simpleconv(pretrained=False):
+    
+    from projects.tutorials.object_nav_ithor_ppo_simpleconv import ObjectNavThorPPOExperimentConfig
+    # Define Task sampler 
+    objectnav_task_sampler = (
+        ObjectNavThorPPOExperimentConfig.make_sampler_fn(
+            loop_dataset = False,
+            mode="valid",
+            seed=12,
+            x_display=open_x_displays[0] if len(open_x_displays) != 0 else None,
+            scenes=ObjectNavThorPPOExperimentConfig.VALID_SCENES,
+            scene_directory = os.path.join(os.getcwd(), "datasets/ithor-objectnav/val/episodes"),
+            object_types= ObjectNavThorPPOExperimentConfig.OBJECT_TYPES,
+            env_args= ObjectNavThorPPOExperimentConfig.ENV_ARGS,
+            max_steps= ObjectNavThorPPOExperimentConfig.MAX_STEPS,
+            sensors= ObjectNavThorPPOExperimentConfig.SENSORS,
+            action_space= gym.spaces.Discrete(
+                len(ObjectNaviThorGridTask.class_action_names())
+            ),
+            rewards_config = ObjectNavThorPPOExperimentConfig.REWARD_CONFIG,
+        )
+    )
+
+    
+    mode='valid'
+    nprocesses = 1
+    sensor_preprocessor_graph = (
+            SensorPreprocessorGraph(
+                source_observation_spaces=SensorSuite(ObjectNavThorPPOExperimentConfig.SENSORS).observation_spaces,
+                preprocessors=ObjectNavThorPPOExperimentConfig.PREPROCESSORS,
+            )
+            if mode == "train"
+            or (
+                (isinstance(nprocesses, int) and nprocesses > 0)
+                or (isinstance(nprocesses, Sequence) and sum(nprocesses) > 0)
+            )
+            else None
+        )
+    walkthrough_model = ObjectNavThorPPOExperimentConfig.create_model(sensor_preprocessor_graph=sensor_preprocessor_graph)
+    if pretrained:
+        # Define model and load state dict
+        tmpdir = "./pretrained_model_ckpts/"
+        ckpt_string = "exp_ObjectNaviThorPPOSimpleConvGRU__stage_00__steps_000050030700"
+        ckpt_path = os.path.join(
+                tmpdir, ckpt_string + ".pt"
+            )
+    
+        state_dict = torch.load(
+            ckpt_path,
+            map_location="cpu",
+        )
+        walkthrough_model.load_state_dict(state_dict["model_state_dict"])
+
+    return walkthrough_model,objectnav_task_sampler,sensor_preprocessor_graph
+    
+
 def get_pointnav_ithor_default_resnet(pretrained=False):
+
+    from projects.tutorials.point_nav_ithor_ppo_baseline import PointNavThorPPOExperimentConfig
+
     val_path = os.path.join(
         os.getcwd(), "datasets/ithor-pointnav-on-objectnav/val/episodes", "*.json.gz"
     )
@@ -238,8 +301,69 @@ def get_pointnav_ithor_default_resnet(pretrained=False):
     walkthrough_model = PointNavThorPPOExperimentConfig.create_model(sensor_preprocessor_graph=sensor_preprocessor_graph)
     if pretrained:
         # Define model and load state dict
-        tmpdir = "/home/ubuntu/projects/allenact/storage_default/pointnav_ithor_ppo_baseline/checkpoints/PointNaviThorPPOResnetGRU/2021-09-09_08-37-13"
+        tmpdir = "./pretrained_model_ckpts/"
         ckpt_string = "exp_PointNaviThorPPOResnetGRU__stage_00__steps_000050017230"
+        ckpt_path = os.path.join(
+                tmpdir, ckpt_string + ".pt"
+            )
+    
+        state_dict = torch.load(
+            ckpt_path,
+            map_location="cpu",
+        )
+        walkthrough_model.load_state_dict(state_dict["model_state_dict"])
+
+    return walkthrough_model,task_sampler,sensor_preprocessor_graph
+
+def get_pointnav_ithor_default_resnet(pretrained=False):
+
+    from projects.tutorials.point_nav_ithor_ppo_simpleconv import PointNavThorPPOExperimentConfig
+
+    val_path = os.path.join(
+        os.getcwd(), "datasets/ithor-pointnav-on-objectnav/val/episodes", "*.json.gz"
+    )
+    scenes = [
+        os.path.basename(scene).split(".")[0] for scene in glob.glob(val_path)
+    ]
+    # Define Task sampler 
+    task_sampler = (
+        PointNavThorPPOExperimentConfig.make_sampler_fn(
+            loop_dataset = False,
+            mode="valid",
+            seed=12,
+            x_display=open_x_displays[0] if len(open_x_displays) != 0 else None,
+            scenes=scenes,
+            scene_directory = os.path.join(os.getcwd(), "datasets/ithor-pointnav-on-objectnav/val/"),
+            env_args= PointNavThorPPOExperimentConfig.ENV_ARGS,
+            max_steps= PointNavThorPPOExperimentConfig.MAX_STEPS,
+            sensors= PointNavThorPPOExperimentConfig.SENSORS,
+            action_space= gym.spaces.Discrete(
+                len(PointNaviThorTask.class_action_names())
+            ),
+            rewards_config = PointNavThorPPOExperimentConfig.REWARD_CONFIG,
+        )
+    )
+
+    
+    mode='valid'
+    nprocesses = 1
+    sensor_preprocessor_graph = (
+            SensorPreprocessorGraph(
+                source_observation_spaces=SensorSuite(PointNavThorPPOExperimentConfig.SENSORS).observation_spaces,
+                preprocessors=PointNavThorPPOExperimentConfig.PREPROCESSORS,
+            )
+            if mode == "train"
+            or (
+                (isinstance(nprocesses, int) and nprocesses > 0)
+                or (isinstance(nprocesses, Sequence) and sum(nprocesses) > 0)
+            )
+            else None
+        )
+    walkthrough_model = PointNavThorPPOExperimentConfig.create_model(sensor_preprocessor_graph=sensor_preprocessor_graph)
+    if pretrained:
+        # Define model and load state dict
+        tmpdir = "./pretrained_model_ckpts/"
+        ckpt_string = "exp_PointNaviThorPPOSimpleConvGRU__stage_00__steps_000050018780"
         ckpt_path = os.path.join(
                 tmpdir, ckpt_string + ".pt"
             )
@@ -419,11 +543,14 @@ def walk_along_active_model(active_model_id, follower_model_ids, save_dir, save_
 
 def walk_along_human(follower_model_ids, save_dir):
 
-    follower_models, follower_task_samplers, follower_preprocessor_graphs = {},{},{}
+    follower_models, follower_task_samplers, follower_preprocessor_graphs,follower_save_dirs = {},{},{},{}
     for follower_model_id in follower_model_ids:
         follower_models[follower_model_id],\
         follower_task_samplers[follower_model_id],\
         follower_preprocessor_graphs[follower_model_id] = get_model_details(follower_model_id)
+        follower_save_dirs[follower_model_id] = os.path.join(save_dir,follower_model_id)
+        if not os.path.exists(follower_save_dirs[follower_model_id]):
+            os.makedirs(follower_save_dirs[follower_model_id])
 
     all_models = copy.deepcopy(follower_models) 
 
@@ -445,6 +572,14 @@ def walk_along_human(follower_model_ids, save_dir):
     num_tasks = 10
     count = 0
     success_count =0 
+
+    for model_id,model in all_models.items():
+        temp_metric_path = os.path.join(follower_save_dirs[model_id], 'temp_episodes_f.json' )
+        if os.path.exists(temp_metric_path):
+            collected_episodes = get_collected_episodes(temp_metric_path)
+        else:
+            collected_episodes = []
+
     for i in tqdm(range(num_tasks)):
 
         for model_id,model in all_models.items():
@@ -455,9 +590,14 @@ def walk_along_human(follower_model_ids, save_dir):
             if f==0:
                 follower_tasks[follower_model_id] = follower_task_samplers[follower_model_id].next_task()
                 first_model_id = follower_model_id
+                episode = follower_tasks[follower_model_id].task_info['id']
+                while episode in collected_episodes:
+                    follower_tasks[follower_model_id] = follower_task_samplers[follower_model_id].next_task()
+                    episode = follower_tasks[follower_model_id].task_info['id']
+
             else:
                 scene = follower_tasks[first_model_id].task_info['scene']
-                episode = follower_tasks[first_model_id].task_info['scene'].task_info['id']
+                episode = follower_tasks[first_model_id].task_info['id']
                 follower_tasks[follower_model_id] = follower_task_samplers[follower_model_id].next_task_from_info(scene,episode)
 
         print((follower_task_samplers[first_model_id].max_tasks))
@@ -531,13 +671,15 @@ def walk_along_human(follower_model_ids, save_dir):
             task_info[model_id]['ac_probs'] = ac_probs[model_id]
             task_info[model_id]['ac_vals'] = ac_vals[model_id]
             task_metrics[model_id].append(task_info[model_id])
+            save_path = os.path.join(follower_save_dirs[model_id], 'temp_episodes_f.json' )
+            with open(save_path, 'w') as fout:
+                json.dump(task_metrics[model_id], fout)
 
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
+
     print("Success is ", success_count/count)
 
     for model_id,model in all_models.items():
-        save_path = os.path.join(save_dir,model_id +'_f.json' )
+        save_path = os.path.join(follower_save_dirs[model_id],'all_episodes_f.json' )
         with open(save_path, 'w') as fout:
             json.dump(task_metrics[model_id], fout)
 
@@ -571,7 +713,12 @@ walk_along_active_model(active_model_id, follower_model_ids, save_dir)
 
 """
 
-follower_model_ids = ["objectnav_ithor_default_resnet_random"]
+follower_model_ids = ["pointnav_ithor_default_resnet_random"
+    ,"objectnav_ithor_default_resnet_random"
+    ,"objectnav_ithor_default_resnet_pretrained"
+    ,"pointnav_ithor_default_resnet_pretrained"
+]
+#follower_model_ids = ["objectnav_ithor_default_resnet_random"]
 save_dir = 'trajectory_metadata/active_human'
 walk_along_human(follower_model_ids, save_dir)
 
