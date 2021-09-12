@@ -6,6 +6,7 @@ import urllib
 import urllib.request
 import warnings
 import copy
+import readchar
 from collections import defaultdict
 
 # noinspection PyUnresolvedReferences
@@ -21,6 +22,7 @@ import compress_pickle
 import numpy as np
 import torch
 import glob
+import matplotlib.pyplot as plt
 
 from allenact.algorithms.onpolicy_sync.storage import RolloutStorage
 from allenact.base_abstractions.misc import Memory, ActorCriticOutput
@@ -120,6 +122,24 @@ def add_step_dim(input):
         raise NotImplementedError
 
 
+def get_action_from_human():
+    key2action = {
+        "'q'": "MoveAhead", 
+        "'a'": "RotateLeft" ,
+        "'d'": "RotateRight" , 
+        "'s'": "LookDown" , 
+        "'w'": "LookUp" , 
+        "'e'": "Stop" , 
+    }
+    possible_actions = ["MoveAhead", "RotateLeft", "RotateRight", "LookDown", "LookUp", "Stop"]
+    key = repr(readchar.readchar())
+    while key not in key2action.keys():
+        key = repr(readchar.readchar())
+        print(1)
+
+    action = possible_actions.index(key2action[key])
+    print("next action is ", action, key2action[key])
+    return  action
 
 def get_objectnav_ithor_default_resnet(pretrained=False):
     # Define Task sampler 
@@ -142,17 +162,7 @@ def get_objectnav_ithor_default_resnet(pretrained=False):
         )
     )
 
-    # Define model and load state dict
-    tmpdir = "/home/ubuntu/projects/allenact/pretrained_model_ckpts/objectnav_ithor_default"
-    ckpt_string = "exp_ObjectNaviThorPPOResnetGRU__stage_00__steps_000050025710"
-    ckpt_path = os.path.join(
-            tmpdir, ckpt_string + ".pt"
-        )
- 
-    state_dict = torch.load(
-        ckpt_path,
-        map_location="cpu",
-    )
+    
     mode='valid'
     nprocesses = 1
     sensor_preprocessor_graph = (
@@ -169,6 +179,17 @@ def get_objectnav_ithor_default_resnet(pretrained=False):
         )
     walkthrough_model = ObjectNavThorPPOExperimentConfig.create_model(sensor_preprocessor_graph=sensor_preprocessor_graph)
     if pretrained:
+        # Define model and load state dict
+        tmpdir = "/home/ubuntu/projects/allenact/pretrained_model_ckpts/objectnav_ithor_default"
+        ckpt_string = "exp_ObjectNaviThorPPOResnetGRU__stage_00__steps_000050025710"
+        ckpt_path = os.path.join(
+                tmpdir, ckpt_string + ".pt"
+            )
+    
+        state_dict = torch.load(
+            ckpt_path,
+            map_location="cpu",
+        )
         walkthrough_model.load_state_dict(state_dict["model_state_dict"])
 
     return walkthrough_model,objectnav_task_sampler,sensor_preprocessor_graph
@@ -199,17 +220,7 @@ def get_pointnav_ithor_default_resnet(pretrained=False):
         )
     )
 
-    # Define model and load state dict
-    tmpdir = "/home/ubuntu/projects/allenact/storage_default/pointnav_ithor_ppo_baseline/checkpoints/PointNaviThorPPOResnetGRU/2021-09-09_08-37-13"
-    ckpt_string = "exp_PointNaviThorPPOResnetGRU__stage_00__steps_000050017230"
-    ckpt_path = os.path.join(
-            tmpdir, ckpt_string + ".pt"
-        )
- 
-    state_dict = torch.load(
-        ckpt_path,
-        map_location="cpu",
-    )
+    
     mode='valid'
     nprocesses = 1
     sensor_preprocessor_graph = (
@@ -226,6 +237,17 @@ def get_pointnav_ithor_default_resnet(pretrained=False):
         )
     walkthrough_model = PointNavThorPPOExperimentConfig.create_model(sensor_preprocessor_graph=sensor_preprocessor_graph)
     if pretrained:
+        # Define model and load state dict
+        tmpdir = "/home/ubuntu/projects/allenact/storage_default/pointnav_ithor_ppo_baseline/checkpoints/PointNaviThorPPOResnetGRU/2021-09-09_08-37-13"
+        ckpt_string = "exp_PointNaviThorPPOResnetGRU__stage_00__steps_000050017230"
+        ckpt_path = os.path.join(
+                tmpdir, ckpt_string + ".pt"
+            )
+    
+        state_dict = torch.load(
+            ckpt_path,
+            map_location="cpu",
+        )
         walkthrough_model.load_state_dict(state_dict["model_state_dict"])
 
     return walkthrough_model,task_sampler,sensor_preprocessor_graph
@@ -395,8 +417,129 @@ def walk_along_active_model(active_model_id, follower_model_ids, save_dir, save_
             json.dump(task_metrics[model_id], fout)
 
 
-def walk_along_human_actions(active_model_id, follower_model_ids, save_dir):
-    return 0
+def walk_along_human(follower_model_ids, save_dir):
+
+    follower_models, follower_task_samplers, follower_preprocessor_graphs = {},{},{}
+    for follower_model_id in follower_model_ids:
+        follower_models[follower_model_id],\
+        follower_task_samplers[follower_model_id],\
+        follower_preprocessor_graphs[follower_model_id] = get_model_details(follower_model_id)
+
+    all_models = copy.deepcopy(follower_models) 
+
+    rollout_storage = {}
+    memory = {}
+    masks = {}
+    task_metrics = {}
+    for model_id,model in all_models.items():
+        rollout_storage[model_id] = RolloutStorage(
+                num_steps=1,
+                num_samplers=1,
+                actor_critic=model,
+                only_store_first_and_last_in_memory=False,
+            )
+        memory[model_id] = rollout_storage[model_id].pick_memory_step(0)
+        masks[model_id] = rollout_storage[model_id].masks[:1]
+        task_metrics[model_id] = []
+
+    num_tasks = 10
+    count = 0
+    success_count =0 
+    for i in tqdm(range(num_tasks)):
+
+        for model_id,model in all_models.items():
+            masks[model_id]  = 0 * masks[model_id]
+                
+        follower_tasks = {}
+        for f,follower_model_id in enumerate(follower_model_ids):
+            if f==0:
+                follower_tasks[follower_model_id] = follower_task_samplers[follower_model_id].next_task()
+                first_model_id = follower_model_id
+            else:
+                scene = follower_tasks[first_model_id].task_info['scene']
+                episode = follower_tasks[first_model_id].task_info['scene'].task_info['id']
+                follower_tasks[follower_model_id] = follower_task_samplers[follower_model_id].next_task_from_info(scene,episode)
+
+        print((follower_task_samplers[first_model_id].max_tasks))
+        if (follower_task_samplers[first_model_id].max_tasks)==0:
+            break
+
+        follower_batches = {}
+        for follower_model_id in follower_model_ids:
+            batch = \
+            follower_preprocessor_graphs[follower_model_id].get_observations(batch_observations([follower_tasks[follower_model_id].get_observations()]))
+            follower_batches[follower_model_id] = add_step_dim(batch)
+        
+        all_batches = copy.deepcopy(follower_batches) 
+
+        rnn_outputs,ac_probs,ac_vals = {},{},{}
+
+        for model_id,model in all_models.items():
+            rnn_outputs[model_id] = []
+            ac_probs[model_id] = []
+            ac_vals[model_id] = []
+
+
+        episode_len = 0
+        #plt.figure()
+        while not follower_tasks[first_model_id].is_done():
+            
+            ac_out = {}
+            for model_id,model in all_models.items():
+                ac_out[model_id], memory[model_id] = cast(
+                    Tuple[ActorCriticOutput, Memory],
+                    model.forward(
+                        observations=all_batches[model_id],
+                        memory=memory[model_id],
+                        prev_actions=None,
+                        masks=masks[model_id],
+                    ),
+                )
+
+                masks[model_id] = masks[model_id].fill_(1.0)
+                rnn_outputs[model_id].append(memory[model_id]['rnn'][0].detach().cpu().numpy().squeeze().tolist())
+                ac_probs[model_id].append(ac_out[model_id].distributions.probs.detach().cpu().numpy().squeeze().tolist())
+                ac_vals[model_id].append(ac_out[model_id].values.detach().cpu().numpy().squeeze().tolist())
+
+            #plt.imshow(follower_tasks[first_model_id].env.controller.last_event.frame)
+            print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+            print("Task is ", follower_tasks[first_model_id].task_info['id'])
+            next_action = get_action_from_human()
+            
+            for follower_model_id in follower_model_ids:
+                outputs = follower_tasks[follower_model_id].step(
+                    action = next_action
+                )
+                obs = outputs.observation
+                batch = \
+                follower_preprocessor_graphs[follower_model_id].get_observations(batch_observations([obs]))
+                follower_batches[follower_model_id] = add_step_dim(batch)
+
+            all_batches = copy.deepcopy(follower_batches)        
+            print("Did collision happen? ", not follower_tasks[first_model_id].env.controller.last_event.metadata["lastActionSuccess"])
+            print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+
+            episode_len+=1
+        print(follower_tasks[first_model_id].task_info['id'],follower_tasks[first_model_id]._success,episode_len)
+        count+=1
+        if follower_tasks[first_model_id]._success:
+            success_count+=1
+        task_info ={}
+        for model_id,model in all_models.items():
+            task_info[model_id] = copy.deepcopy(follower_tasks[model_id].task_info)
+            task_info[model_id]['rnn'] = rnn_outputs[model_id]
+            task_info[model_id]['ac_probs'] = ac_probs[model_id]
+            task_info[model_id]['ac_vals'] = ac_vals[model_id]
+            task_metrics[model_id].append(task_info[model_id])
+
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    print("Success is ", success_count/count)
+
+    for model_id,model in all_models.items():
+        save_path = os.path.join(save_dir,model_id +'_f.json' )
+        with open(save_path, 'w') as fout:
+            json.dump(task_metrics[model_id], fout)
 
 def walk_along_random_actions():
     return 0
@@ -408,7 +551,7 @@ try:
 except (AssertionError, IOError):
     pass
 
-
+"""
 active_model_id = "objectnav_ithor_default_resnet_pretrained"
 follower_model_ids = ["pointnav_ithor_default_resnet_random"
     ,"objectnav_ithor_default_resnet_random"
@@ -416,11 +559,19 @@ follower_model_ids = ["pointnav_ithor_default_resnet_random"
 ]
 """
 
+"""
+
 active_model_id = "pointnav_ithor_default_resnet_pretrained"
 follower_model_ids = ["pointnav_ithor_default_resnet_random"
     ,"objectnav_ithor_default_resnet_random"
     ,"objectnav_ithor_default_resnet_pretrained"
 ]
-"""
 save_dir = 'trajectory_metadata/active_' + active_model_id
 walk_along_active_model(active_model_id, follower_model_ids, save_dir)
+
+"""
+
+follower_model_ids = ["objectnav_ithor_default_resnet_random"]
+save_dir = 'trajectory_metadata/active_human'
+walk_along_human(follower_model_ids, save_dir)
+
