@@ -433,7 +433,7 @@ def walk_along_active_model(active_model_id, follower_model_ids, save_dir, save_
         masks[model_id] = rollout_storage[model_id].masks[:1]
         task_metrics[model_id] = []
 
-    num_tasks = 360
+    num_tasks = 1000
     count = 0
     success_count =0 
     for i in tqdm(range(num_tasks)):
@@ -441,7 +441,10 @@ def walk_along_active_model(active_model_id, follower_model_ids, save_dir, save_
             masks[model_id]  = 0 * masks[model_id]
         
         active_task = active_task_sampler.next_task()
-        if not i%5==0:
+        if active_task.task_info['scene'] is None:
+            break
+
+        if not i%4==0:
             continue
         follower_tasks = {}
         for follower_model_id in follower_model_ids:
