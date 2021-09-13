@@ -9,6 +9,7 @@ import urllib.request
 import warnings
 import copy
 import readchar
+import argparse
 import torch
 from collections import defaultdict
 
@@ -149,18 +150,31 @@ def get_action_from_human():
     print("next action is ", action, key2action[key])
     return  action
 
-def get_objectnav_ithor_default_resnet(pretrained=False):
+def get_objectnav_ithor_default_resnet(episode_type,pretrained=False):
 
     from projects.tutorials.object_nav_ithor_ppo_baseline import ObjectNavThorPPOExperimentConfig
     # Define Task sampler 
+
+    if episode_type == 'train':
+        episode_type_string = 'train_sampled'
+    else:
+        episode_type_string = episode_type
+
+
+    val_path = os.path.join(
+        "datasets/ithor-objectnav/" + episode_type_string + "/episodes", "*.json.gz"
+    )    
+    scenes = [
+        os.path.basename(scene).split(".")[0] for scene in glob.glob(val_path)
+    ]
     objectnav_task_sampler = (
         ObjectNavThorPPOExperimentConfig.make_sampler_fn(
             loop_dataset = False,
             mode="valid",
             seed=12,
             x_display=open_x_displays[0] if len(open_x_displays) != 0 else None,
-            scenes=ObjectNavThorPPOExperimentConfig.VALID_SCENES,
-            scene_directory = os.path.join(os.getcwd(), "datasets/ithor-objectnav/val/episodes"),
+            scenes=scenes,
+            scene_directory = os.path.join(os.getcwd(),"datasets/ithor-objectnav",episode_type_string,"episodes"),
             object_types= ObjectNavThorPPOExperimentConfig.OBJECT_TYPES,
             env_args= ObjectNavThorPPOExperimentConfig.ENV_ARGS,
             max_steps= ObjectNavThorPPOExperimentConfig.MAX_STEPS,
@@ -204,18 +218,29 @@ def get_objectnav_ithor_default_resnet(pretrained=False):
 
     return walkthrough_model,objectnav_task_sampler,sensor_preprocessor_graph
     
-def get_objectnav_ithor_default_simpleconv(pretrained=False):
+def get_objectnav_ithor_default_simpleconv(episode_type,pretrained=False):
     
     from projects.tutorials.object_nav_ithor_ppo_simpleconv import ObjectNavThorPPOExperimentConfig
     # Define Task sampler 
+    if episode_type == 'train':
+        episode_type_string = 'train_sampled'
+    else:
+        episode_type_string = episode_type
+    val_path = os.path.join(
+        "datasets/ithor-objectnav/" + episode_type_string + "/episodes", "*.json.gz"
+    )    
+    scenes = [
+        os.path.basename(scene).split(".")[0] for scene in glob.glob(val_path)
+    ]
+
     objectnav_task_sampler = (
         ObjectNavThorPPOExperimentConfig.make_sampler_fn(
             loop_dataset = False,
             mode="valid",
             seed=12,
             x_display=open_x_displays[0] if len(open_x_displays) != 0 else None,
-            scenes=ObjectNavThorPPOExperimentConfig.VALID_SCENES,
-            scene_directory = os.path.join(os.getcwd(), "datasets/ithor-objectnav/val/episodes"),
+            scenes=scenes,
+            scene_directory = os.path.join(os.getcwd(), "datasets/ithor-objectnav",episode_type_string,"episodes"),
             object_types= ObjectNavThorPPOExperimentConfig.OBJECT_TYPES,
             env_args= ObjectNavThorPPOExperimentConfig.ENV_ARGS,
             max_steps= ObjectNavThorPPOExperimentConfig.MAX_STEPS,
@@ -260,12 +285,12 @@ def get_objectnav_ithor_default_simpleconv(pretrained=False):
     return walkthrough_model,objectnav_task_sampler,sensor_preprocessor_graph
     
 
-def get_pointnav_ithor_default_resnet(pretrained=False):
+def get_pointnav_ithor_default_resnet(episode_type,pretrained=False):
 
     from projects.tutorials.point_nav_ithor_ppo_baseline import PointNavThorPPOExperimentConfig
 
     val_path = os.path.join(
-        os.getcwd(), "datasets/ithor-pointnav-on-objectnav/val/episodes", "*.json.gz"
+        "datasets/ithor-pointnav-on-objectnav/" + episode_type + "/episodes", "*.json.gz"
     )
     scenes = [
         os.path.basename(scene).split(".")[0] for scene in glob.glob(val_path)
@@ -278,7 +303,7 @@ def get_pointnav_ithor_default_resnet(pretrained=False):
             seed=12,
             x_display=open_x_displays[0] if len(open_x_displays) != 0 else None,
             scenes=scenes,
-            scene_directory = os.path.join(os.getcwd(), "datasets/ithor-pointnav-on-objectnav/val/"),
+            scene_directory = os.path.join(os.getcwd(), "datasets/ithor-pointnav-on-objectnav/" +episode_type+"/"),
             env_args= PointNavThorPPOExperimentConfig.ENV_ARGS,
             max_steps= PointNavThorPPOExperimentConfig.MAX_STEPS,
             sensors= PointNavThorPPOExperimentConfig.SENSORS,
@@ -321,12 +346,12 @@ def get_pointnav_ithor_default_resnet(pretrained=False):
 
     return walkthrough_model,task_sampler,sensor_preprocessor_graph
 
-def get_pointnav_ithor_default_simpleconv(pretrained=False):
+def get_pointnav_ithor_default_simpleconv(episode_type, pretrained=False):
 
     from projects.tutorials.point_nav_ithor_ppo_simpleconv import PointNavThorPPOExperimentConfig
 
     val_path = os.path.join(
-        os.getcwd(), "datasets/ithor-pointnav-on-objectnav/val/episodes", "*.json.gz"
+        os.getcwd(), "datasets/ithor-pointnav-on-objectnav/" + episode_type + "/episodes", "*.json.gz"
     )
     scenes = [
         os.path.basename(scene).split(".")[0] for scene in glob.glob(val_path)
@@ -339,7 +364,7 @@ def get_pointnav_ithor_default_simpleconv(pretrained=False):
             seed=12,
             x_display=open_x_displays[0] if len(open_x_displays) != 0 else None,
             scenes=scenes,
-            scene_directory = os.path.join(os.getcwd(), "datasets/ithor-pointnav-on-objectnav/val/"),
+            scene_directory = os.path.join(os.getcwd(), "datasets/ithor-pointnav-on-objectnav/" +episode_type+"/"),
             env_args= PointNavThorPPOExperimentConfig.ENV_ARGS,
             max_steps= PointNavThorPPOExperimentConfig.MAX_STEPS,
             sensors= PointNavThorPPOExperimentConfig.SENSORS,
@@ -383,36 +408,36 @@ def get_pointnav_ithor_default_simpleconv(pretrained=False):
     return walkthrough_model,task_sampler,sensor_preprocessor_graph
 
 
-def get_model_details(model_id):
+def get_model_details(model_id,episode_type):
     if model_id == "pointnav_ithor_default_resnet_pretrained":
-        model,task_sampler,preprocessor_graph = get_pointnav_ithor_default_resnet(pretrained = True) 
+        model,task_sampler,preprocessor_graph = get_pointnav_ithor_default_resnet(episode_type, pretrained = True) 
     elif model_id == "pointnav_ithor_default_simpleconv_pretrained":
-        model,task_sampler,preprocessor_graph = get_pointnav_ithor_default_simpleconv(pretrained = True) 
+        model,task_sampler,preprocessor_graph = get_pointnav_ithor_default_simpleconv(episode_type, pretrained = True) 
     elif model_id == "pointnav_ithor_default_resnet_random":
-        model,task_sampler,preprocessor_graph = get_pointnav_ithor_default_resnet() 
+        model,task_sampler,preprocessor_graph = get_pointnav_ithor_default_resnet(episode_type,) 
     elif model_id == "pointnav_ithor_default_simpleconv_random":
-        model,task_sampler,preprocessor_graph = get_pointnav_ithor_default_simpleconv() 
+        model,task_sampler,preprocessor_graph = get_pointnav_ithor_default_simpleconv(episode_type,) 
     elif model_id == "objectnav_ithor_default_resnet_pretrained":
-        model,task_sampler,preprocessor_graph = get_objectnav_ithor_default_resnet(pretrained = True) 
+        model,task_sampler,preprocessor_graph = get_objectnav_ithor_default_resnet(episode_type, pretrained = True) 
     elif model_id == "objectnav_ithor_default_simpleconv_pretrained":
-        model,task_sampler,preprocessor_graph = get_objectnav_ithor_default_simpleconv(pretrained = True) 
+        model,task_sampler,preprocessor_graph = get_objectnav_ithor_default_simpleconv(episode_type, pretrained = True) 
     elif model_id == "objectnav_ithor_default_resnet_random":
-        model,task_sampler,preprocessor_graph = get_objectnav_ithor_default_resnet() 
+        model,task_sampler,preprocessor_graph = get_objectnav_ithor_default_resnet(episode_type,) 
     elif model_id == "objectnav_ithor_default_simpleconv_random":         
-        model,task_sampler,preprocessor_graph = get_objectnav_ithor_default_simpleconv() 
+        model,task_sampler,preprocessor_graph = get_objectnav_ithor_default_simpleconv(episode_type,) 
 
     return model,task_sampler,preprocessor_graph
 
 
-def walk_along_active_model(active_model_id, follower_model_ids, save_dir, save_metadata = False):
+def walk_along_active_model(active_model_id, follower_model_ids, save_dir, episode_type, save_metadata = False):
 
-    active_model, active_task_sampler, active_preprocessor_graph = get_model_details(active_model_id)
+    active_model, active_task_sampler, active_preprocessor_graph = get_model_details(active_model_id,episode_type)
 
     follower_models, follower_task_samplers, follower_preprocessor_graphs = {},{},{}
     for follower_model_id in follower_model_ids:
         follower_models[follower_model_id],\
         follower_task_samplers[follower_model_id],\
-        follower_preprocessor_graphs[follower_model_id] = get_model_details(follower_model_id)
+        follower_preprocessor_graphs[follower_model_id] = get_model_details(follower_model_id,episode_type)
 
     all_models = (follower_models) 
     all_models[active_model_id] = active_model
@@ -441,7 +466,7 @@ def walk_along_active_model(active_model_id, follower_model_ids, save_dir, save_
             masks[model_id]  = 0 * masks[model_id]
         
         active_task = active_task_sampler.next_task()
-        if active_task.task_info['scene'] is None:
+        if active_task is None:
             break
 
         if not i%4==0:
@@ -552,13 +577,13 @@ def walk_along_active_model(active_model_id, follower_model_ids, save_dir, save_
             json.dump(task_metrics[model_id], fout)
 
 
-def walk_along_human(follower_model_ids, save_dir):
+def walk_along_human(follower_model_ids, save_dir,episode_type):
 
     follower_models, follower_task_samplers, follower_preprocessor_graphs,follower_save_dirs = {},{},{},{}
     for follower_model_id in follower_model_ids:
         follower_models[follower_model_id],\
         follower_task_samplers[follower_model_id],\
-        follower_preprocessor_graphs[follower_model_id] = get_model_details(follower_model_id)
+        follower_preprocessor_graphs[follower_model_id] = get_model_details(follower_model_id,episode_type)
         follower_save_dirs[follower_model_id] = os.path.join(save_dir,follower_model_id)
         if not os.path.exists(follower_save_dirs[follower_model_id]):
             os.makedirs(follower_save_dirs[follower_model_id])
@@ -602,6 +627,7 @@ def walk_along_human(follower_model_ids, save_dir):
                 follower_tasks[follower_model_id] = follower_task_samplers[follower_model_id].next_task()
                 first_model_id = follower_model_id
                 episode = follower_tasks[follower_model_id].task_info['id']
+                
                 while episode in collected_episodes:
                     follower_tasks[follower_model_id] = follower_task_samplers[follower_model_id].next_task()
                     episode = follower_tasks[follower_model_id].task_info['id']
@@ -707,42 +733,39 @@ try:
 except (AssertionError, IOError):
     pass
 
-"""
-active_model_id = "objectnav_ithor_default_resnet_pretrained"
-follower_model_ids = ["pointnav_ithor_default_resnet_random"
-    ,"objectnav_ithor_default_resnet_random"
-    ,"pointnav_ithor_default_resnet_pretrained"
-]
-"""
+def main():
 
-"""
+    parser = argparse.ArgumentParser(description='Generates model activations following a model/human trajectory')
+    parser.add_argument('-e','--episode_type', help='run on which episodes val/train', default = 'train', type=str)
+    parser.add_argument('-m','--arch',help='architecture : resnet or simple conv', default = 'simpleconv', type=str)
+    parser.add_argument('--active', help = 'Which model is active pointnav/objectnav/human',default = 'objectnav', type=str )
 
-active_model_id = "pointnav_ithor_default_resnet_pretrained"
-follower_model_ids = ["pointnav_ithor_default_resnet_random"
-    ,"objectnav_ithor_default_resnet_random"
-    ,"objectnav_ithor_default_resnet_pretrained"
-]
-save_dir = 'trajectory_metadata/active_' + active_model_id
-walk_along_active_model(active_model_id, follower_model_ids, save_dir)
+    args = vars(parser.parse_args())
 
-"""
+    model_types = ['objectnav','pointnav']
 
-"""
-follower_model_ids = ["pointnav_ithor_default_resnet_random"
-    ,"objectnav_ithor_default_resnet_random"
-    ,"objectnav_ithor_default_resnet_pretrained"
-    ,"pointnav_ithor_default_resnet_pretrained"
-]
-#follower_model_ids = ["objectnav_ithor_default_resnet_random"]
-save_dir = 'trajectory_metadata/active_human'
-walk_along_human(follower_model_ids, save_dir)
-"""
+    if args['active'] == 'human':
+        follower_model_ids = ["pointnav_ithor_default_" + args['arch'] + "_random"
+        ,"objectnav_ithor_default_" + args['arch'] + "_random"
+        ,"objectnav_ithor_default_" + args['arch'] + "_pretrained"
+        ,"pointnav_ithor_default_" + args['arch'] + "_pretrained"
+        ]
+        save_dir = os.path.join('trajectory_metadata',args['episode_type'],'active_' + args['active'])
+        walk_along_human(follower_model_ids, save_dir,args['episode_type'])
+    
+    else:
+        model_types.remove(args['active'])
+        passive_model = model_types[0]
+        active_model_id = args['active'] + "_ithor_default_" + args['arch'] + "_pretrained"
+
+        follower_model_ids = [passive_model + "_ithor_default_" + args['arch'] + "_random"
+        ,passive_model + "_ithor_default_" + args['arch'] + "_pretrained"
+        ,args['active'] + "_ithor_default_" + args['arch'] + "_random"
+        ]
+        save_dir = os.path.join('trajectory_metadata',args['episode_type'],'active_' + active_model_id)
+        walk_along_active_model(active_model_id, follower_model_ids, save_dir,args['episode_type'])
+    
 
 
-active_model_id = "pointnav_ithor_default_simpleconv_pretrained"
-follower_model_ids = ["pointnav_ithor_default_simpleconv_random"
-    ,"objectnav_ithor_default_simpleconv_random"
-    ,"objectnav_ithor_default_simpleconv_pretrained"
-]
-save_dir = 'trajectory_metadata/active_' + active_model_id
-walk_along_active_model(active_model_id, follower_model_ids, save_dir)
+if __name__ == "__main__":
+    main()
