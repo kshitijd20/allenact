@@ -91,9 +91,14 @@ from projects.objectnav_baselines.models.object_nav_models import (
 )
 import sys
 
-
+from trajectory_features.trajectory_metadata import trajectory_metadata,trajectory_metadata_pointnav
+from trajectory_features.extract_trajectory_metadata import get_all_object_types,get_action_triplets
+from trajectory_features.thor_utils import *
+from trajectory_features import __version__
+from trajectory_features.headless_controller import HeadlessController
 
 import json
+import pandas as pd
 
 allenact_to_ai2thor_actions = {
     "MoveAhead" : "MoveAhead",
@@ -795,11 +800,23 @@ def walk_along_human(follower_model_ids, save_dir,episode_type):
         with open(save_path, 'w') as fout:
             json.dump(task_metrics[model_id], fout)
 
-def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories_file_path):
+def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories_file_path,save_metadata=False):
 
     trajectories_data =  read_metric_file(trajectories_file_path)
-
+    action_list = ['MoveAhead', "RotateLeft", 'RotateRight', "LookDown", "LookUp", 'Stop']
     follower_models, follower_task_samplers, follower_preprocessor_graphs,follower_save_dirs = {},{},{},{}
+
+    if save_metadata:
+        follower_metadata = {}
+        follower_rnn = {}
+        all_obj_types = get_all_object_types()
+        action_triplets = get_action_triplets(action_list)
+        rotate_step_degrees=30
+        num_rotation_angles = math.ceil(360.0 / rotate_step_degrees)
+        reachability_radii = [2, 4, 6]  # list(range(1,7))
+        grid_size = 0.25
+
+
     for follower_model_id in follower_model_ids:
         follower_models[follower_model_id],\
         follower_task_samplers[follower_model_id],\
@@ -807,6 +824,11 @@ def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories
         follower_save_dirs[follower_model_id] = os.path.join(save_dir,follower_model_id)
         if not os.path.exists(follower_save_dirs[follower_model_id]):
             os.makedirs(follower_save_dirs[follower_model_id])
+
+        if save_metadata:
+            follower_metadata[follower_model_id] = pd.DataFrame()
+            follower_rnn[follower_model_id] = pd.DataFrame()
+
 
     all_models = copy.deepcopy(follower_models) 
 
@@ -828,7 +850,7 @@ def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories
     num_tasks = 1000
     count = 0
     success_count =0 
-    action_list = ['MoveAhead', "RotateLeft", 'RotateRight', "LookDown", "LookUp", 'Stop']
+    
     for i in tqdm(range(num_tasks)):
 
         for model_id,model in all_models.items():
@@ -847,9 +869,12 @@ def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories
                 scene = follower_tasks[first_model_id].task_info['scene']
                 episode = follower_tasks[first_model_id].task_info['id']
                 follower_tasks[follower_model_id] = follower_task_samplers[follower_model_id].next_task_from_info(scene,episode)
+            init_event = follower_tasks[follower_model_id].env.controller.last_event
             follower_tasks[follower_model_id].env.controller.step("PausePhysicsAutoSim")
+            
 
         if follower_tasks[follower_model_id] is None:
+            print(follower_tasks[follower_model_id])
             break
 
         if  follower_tasks[first_model_id].task_info['id'] in trajectories_data:
@@ -878,6 +903,9 @@ def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories
 
 
         episode_len = 0
+        first_2_actions = []
+        traj_feats = {}
+        ep_details = []
         #plt.figure()
         while not follower_tasks[first_model_id].is_done():
             
@@ -898,12 +926,16 @@ def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories
                 rnn_outputs[model_id].append(memory[model_id]['rnn'][0].detach().cpu().numpy().squeeze().tolist())
                 ac_probs[model_id].append(ac_out[model_id].distributions.probs.detach().cpu().numpy().squeeze().tolist())
                 ac_vals[model_id].append(ac_out[model_id].values.detach().cpu().numpy().squeeze().tolist())
+            
+            
+
 
             #plt.imshow(follower_tasks[first_model_id].env.controller.last_event.frame)
             print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
             print("Task is ", follower_tasks[first_model_id].task_info['id'])
 
             next_action = action_list.index(trajectories_data[follower_tasks[first_model_id].task_info['id']]['actions_taken'][episode_len]['action'])
+            
             for follower_model_id in follower_model_ids:
                 outputs = follower_tasks[follower_model_id].step(
                     action = next_action
@@ -918,6 +950,47 @@ def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories
             all_batches = copy.deepcopy(follower_batches)        
             print("Did collision happen? ", not follower_tasks[first_model_id].env.controller.last_event.metadata["lastActionSuccess"])
             print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+
+
+            if save_metadata:
+                if episode_len<2:
+                    first_2_actions.append(action_list[next_action])
+                elif episode_len == 2:
+                    for model_id,model in all_models.items():
+                        if 'pointnav' in model_id:
+                            traj_feats[model_id] = trajectory_metadata_pointnav(init_event,
+                                                            first_2_actions,
+                                                            all_obj_types,
+                                                            action_triplets,
+                                                            reachability_radii,
+                                                            num_rotation_angles,
+                                                            rotate_step_degrees,
+                                                            grid_size,
+                                                            follower_tasks[model_id].task_info,
+                                                            follower_tasks[model_id].env.controller,
+                                                            )
+                        else: 
+                            traj_feats[model_id] = trajectory_metadata(init_event,
+                                                            first_2_actions,
+                                                            all_obj_types,
+                                                            action_triplets,
+                                                            reachability_radii,
+                                                            num_rotation_angles,
+                                                            rotate_step_degrees,
+                                                            grid_size,
+                                                            follower_tasks[model_id].task_info,
+                                                            follower_tasks[model_id].env.controller,
+                                                            )
+                if episode_len >= 2: # and not i == len(agent_actions_taken) - 1:
+                    # get trajectory metadata
+                    for model_id,model in all_models.items():
+                        collision_info = not follower_tasks[model_id].env.controller.last_event.metadata["lastActionSuccess"]
+                        
+                        traj_feats[model_id].update_dicts(  follower_tasks[model_id].env.controller.last_event,
+                                                            action_list[next_action],                                                            
+                                                            collision_info)
+                    step_info = follower_tasks[model_id].task_info['id'] + "_actionstep_" + str(episode_len).zfill(3)
+                    ep_details.append(step_info)
 
             episode_len+=1
         print(follower_tasks[first_model_id].task_info['id'],follower_tasks[first_model_id]._success,episode_len)
@@ -938,6 +1011,21 @@ def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories
             with open(save_path, 'w') as fout:
                 json.dump(task_metrics[model_id], fout)
 
+            if save_metadata:
+                if episode_len > 2:
+                    episode_df = pd.DataFrame(traj_feats[model_id].trajectory_feat_list, index=ep_details)
+                    rnn_df = pd.DataFrame(rnn_outputs[model_id][2:], index=ep_details)
+                    ac_prob_labels = ['AC_MOVE_AHEAD', 'AC_ROTATE_LEFT', 'AC_ROTATE_RIGHT', 'AC_LOOK_DOWN', 'AC_LOOK_UP', 'AC_END'] 
+                    ac_policy_labels = ['AC_POLICY']
+                    ac_prob_df = pd.DataFrame(ac_probs[model_id][2:], index=ep_details, columns = ac_prob_labels)
+                    ac_policy_df = pd.DataFrame(ac_vals[model_id][2:], index=ep_details, columns = ac_policy_labels)
+                    episode_df = pd.concat([episode_df, ac_prob_df,ac_policy_df], axis=1)
+
+                follower_metadata[model_id] = follower_metadata[model_id].append(episode_df)
+                follower_rnn[model_id] = follower_rnn[model_id].append(rnn_df)
+                follower_metadata[model_id].to_pickle(os.path.join(follower_save_dirs[model_id],"metadata.pkl"))
+                follower_rnn[model_id].to_pickle(os.path.join(follower_save_dirs[model_id],"rnn.pkl"))
+
         for model_id,model in all_models.items():
             assert are_trajectories_same(task_info[model_id]["followed_path"],task_info[first_model_id]["followed_path"])
 
@@ -950,6 +1038,10 @@ def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories
         save_path = os.path.join(follower_save_dirs[model_id],'all_episodes_f.json' )
         with open(save_path, 'w') as fout:
             json.dump(task_metrics[model_id], fout)
+
+        if save_metadata:
+            follower_metadata[model_id].to_pickle(os.path.join(follower_save_dirs[model_id],"all_metadata.pkl"))
+            follower_rnn[model_id].to_pickle(os.path.join(follower_save_dirs[model_id],"all_rnn.pkl"))
 
 
 
@@ -990,8 +1082,8 @@ def main():
         ,"objectnav_ithor_default_" + args['arch'] + "_pretrained"
         ,"pointnav_ithor_default_" + args['arch'] + "_pretrained"
         ]
-        save_dir = os.path.join('trajectory_metadata',args['episode_type'],'active_human_sub1_trajectories')
-        walk_along_trajectory(follower_model_ids, save_dir,args['episode_type'],args['trajectories_file'])
+        save_dir = os.path.join('trajectory_metadata',args['episode_type'],'active_human_sub1_trajectories_with_metadata')
+        walk_along_trajectory(follower_model_ids, save_dir,args['episode_type'],args['trajectories_file'],save_metadata=True)
 
     else:
         model_types.remove(args['active'])

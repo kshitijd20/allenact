@@ -323,13 +323,9 @@ class IThorEnvironment(object):
             gridSize=self._grid_size,
             rotateStepDegrees=self._rotate_step_degrees,
             visibilityDistance=self._visibility_distance,
-            
+            #renderSemanticSegmentation=True,           # TODO make it a kwarg later
         )
-        print("------------------------------------------------------------------------------------------------------")
-        print("------------------------------------------------------------------------------------------------------")
-        print(attrs(self.controller))
-        print("------------------------------------------------------------------------------------------------------")
-        print("------------------------------------------------------------------------------------------------------")
+        
         if (
             self._start_player_screen_height,
             self._start_player_screen_width,
@@ -390,15 +386,12 @@ class IThorEnvironment(object):
                 "local_executable_path" : self._local_thor_build,
                 "snapToGrid" : self._snap_to_grid,
                 "quality": self._quality,
+                "renderSemanticSegmentation": True ,  
                 #"server_class": ai2thor.fifo_server.FifoServer,
                 **kwargs,
             }
         )
-        print("------------------------------------------------------------------------------------------------------")
-        print("------------------------------------------------------------------------------------------------------")
-        print(attrs(self.controller))
-        print("------------------------------------------------------------------------------------------------------")
-        print("------------------------------------------------------------------------------------------------------")
+        
         if self.object_open_speed != 1.0:
             self.controller.step(
                 {"action": "ChangeOpenSpeed", "x": self.object_open_speed}
