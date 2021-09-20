@@ -845,7 +845,9 @@ def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories
         masks[model_id] = rollout_storage[model_id].masks[:1]
         task_metrics[model_id] = []
 
-    num_tasks = 1000
+    episode_list = list(trajectories_data.keys())
+    num_tasks = len(episode_list)
+    
     count = 0
     success_count =0 
     
@@ -856,17 +858,10 @@ def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories
                 
         follower_tasks = {}
         for f,follower_model_id in enumerate(follower_model_ids):
-            if f==0:
-                follower_tasks[follower_model_id] = follower_task_samplers[follower_model_id].next_task()
-                first_model_id = follower_model_id
-                if follower_tasks[follower_model_id] is None:
-                    break
-                episode = follower_tasks[follower_model_id].task_info['id']
-
-            else:
-                scene = follower_tasks[first_model_id].task_info['scene']
-                episode = follower_tasks[first_model_id].task_info['id']
-                follower_tasks[follower_model_id] = follower_task_samplers[follower_model_id].next_task_from_info(scene,episode)
+            scene = episode_list[i].split("_")[0]
+            episode = episode_list[i]
+            print(scene,episode)
+            follower_tasks[follower_model_id] = follower_task_samplers[follower_model_id].next_task_from_info(scene,episode)
             init_event = follower_tasks[follower_model_id].env.controller.last_event
             follower_tasks[follower_model_id].env.controller.step("PausePhysicsAutoSim")
             
@@ -875,13 +870,8 @@ def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories
             print(follower_tasks[follower_model_id])
             break
 
-        if  follower_tasks[first_model_id].task_info['id'] in trajectories_data:
-            print(trajectories_data[follower_tasks[first_model_id].task_info['id']]['actions_taken'][0])
-        else:
-            continue
-
-        print((follower_task_samplers[first_model_id].max_tasks))
-        if (follower_task_samplers[first_model_id].max_tasks)==0:
+        print((follower_task_samplers[follower_model_id].max_tasks))
+        if (follower_task_samplers[follower_model_id].max_tasks)==0:
             break
 
         follower_batches = {}
@@ -905,7 +895,7 @@ def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories
         traj_feats = {}
         ep_details = []
         #plt.figure()
-        while not follower_tasks[first_model_id].is_done():
+        while not follower_tasks[follower_model_id].is_done():
             
             ac_out = {}
             for model_id,model in all_models.items():
@@ -930,9 +920,9 @@ def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories
 
             #plt.imshow(follower_tasks[first_model_id].env.controller.last_event.frame)
             print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-            print("Task is ", follower_tasks[first_model_id].task_info['id'])
+            print("Task is ", follower_tasks[model_id].task_info['id'])
 
-            next_action = action_list.index(trajectories_data[follower_tasks[first_model_id].task_info['id']]['actions_taken'][episode_len]['action'])
+            next_action = action_list.index(trajectories_data[follower_tasks[model_id].task_info['id']]['actions_taken'][episode_len]['action'])
             
             for follower_model_id in follower_model_ids:
                 outputs = follower_tasks[follower_model_id].step(
@@ -946,7 +936,7 @@ def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories
                 follower_batches[follower_model_id] = add_step_dim(batch)
 
             all_batches = copy.deepcopy(follower_batches)        
-            print("Did collision happen? ", not follower_tasks[first_model_id].env.controller.last_event.metadata["lastActionSuccess"])
+            print("Did collision happen? ", not follower_tasks[follower_model_id].env.controller.last_event.metadata["lastActionSuccess"])
             print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 
 
@@ -991,9 +981,9 @@ def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories
                     ep_details.append(step_info)
 
             episode_len+=1
-        print(follower_tasks[first_model_id].task_info['id'],follower_tasks[first_model_id]._success,episode_len)
+        print(follower_tasks[model_id].task_info['id'],follower_tasks[model_id]._success,episode_len)
         count+=1
-        if follower_tasks[first_model_id]._success:
+        if follower_tasks[model_id]._success:
             success_count+=1
         task_info ={}
 
@@ -1024,8 +1014,8 @@ def walk_along_trajectory(follower_model_ids, save_dir,episode_type,trajectories
                 follower_metadata[model_id].to_pickle(os.path.join(follower_save_dirs[model_id],"metadata.pkl"))
                 follower_rnn[model_id].to_pickle(os.path.join(follower_save_dirs[model_id],"rnn.pkl"))
 
-        for model_id,model in all_models.items():
-            assert are_trajectories_same(task_info[model_id]["followed_path"],task_info[first_model_id]["followed_path"])
+        #for model_id,model in all_models.items():
+        #    assert are_trajectories_same(task_info[model_id]["followed_path"],task_info[first_model_id]["followed_path"])
 
 
 
