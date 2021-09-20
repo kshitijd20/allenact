@@ -386,6 +386,7 @@ class ObjectNaviThorDatasetTaskSampler(TaskSampler):
         task_info["path_to_target"] = episode.get("shortest_path")
         task_info["object_type"] = episode["object_type"]
         task_info["id"] = episode["id"]
+        task_info["target"] = episode["target_position"]
         if self.allow_flipping and random.random() > 0.5:
             task_info["mirrored"] = True
         else:
@@ -453,6 +454,7 @@ class ObjectNaviThorDatasetTaskSampler(TaskSampler):
         task_info["path_to_target"] = episode.get("shortest_path")
         task_info["object_type"] = episode["object_type"]
         task_info["id"] = episode["id"]
+        task_info["target"] = episode["target_position"]
         if self.allow_flipping and random.random() > 0.5:
             task_info["mirrored"] = True
         else:

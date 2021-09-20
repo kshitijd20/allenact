@@ -164,8 +164,6 @@ def read_metric_file(metric_file):
     print("number of episodes ", num_episodes, "average episode length ", challenge_metrics["ep_len"] )
     return challenge_metrics["episodes"]
 
-
-
 def are_trajectories_same(path1,path2):
     print("are paths equal", path1==path2)
     return path1==path2
