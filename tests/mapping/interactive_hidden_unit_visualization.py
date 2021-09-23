@@ -212,7 +212,7 @@ def get_objectnav_ithor_default_resnet(episode_type,pretrained=False):
     # Define Task sampler 
 
     if episode_type == 'train':
-        episode_type_string = 'train_sampled'
+        episode_type_string = 'train'
     else:
         episode_type_string = episode_type
 
@@ -482,7 +482,7 @@ def get_model_details(model_id,episode_type):
 
     return model,task_sampler,preprocessor_graph
 
-def visualize_hidden_unit(model_id, save_dir,episode_type,hidden_unit_ids):
+def visualize_hidden_unit(model_id, save_dir,episode_type,hidden_unit_ids,to_highlight):
 
     action_list = ['MoveAhead', "RotateLeft", 'RotateRight', "LookDown", "LookUp", 'Stop']
 
@@ -504,14 +504,16 @@ def visualize_hidden_unit(model_id, save_dir,episode_type,hidden_unit_ids):
     memory = rollout_storage.pick_memory_step(0)
     masks = rollout_storage.masks[:1]
 
-    num_tasks = 5
+    num_tasks = 160
     
-    for i in tqdm(range(num_tasks)):
+    for task_num in tqdm(range(num_tasks)):
 
 
         masks  = 0 * masks      
-
+        
         task = task_sampler.next_task()
+        if not task_num % 16 == 0:
+            continue
         init_event = task.env.controller.last_event
         episode = task.task_info['id']
                 
@@ -613,16 +615,18 @@ def visualize_hidden_unit(model_id, save_dir,episode_type,hidden_unit_ids):
                                                     color_pair_ind=episode_len,
                                                     )
                 rnn = memory['rnn'][0].detach().cpu().numpy().squeeze().tolist()
-
+                
                 for i in range(1):
                     for j in range(3):
                         axs[i][j].clear()
-                plot_visualization(axs,fig,task.task_info['id'], frame, rnn,topdown_frame,metadata2plot, hidden_unit_ids)
+                plot_visualization(axs,fig,task.task_info['id'], frame, rnn,topdown_frame,metadata2plot, hidden_unit_ids,to_highlight)
                 plt.pause(0.05)
                 plt.draw() 
+                plt.savefig(save_dir + "/" + task.task_info['id'] +"_%03d.png" % episode_len)
                 
 
             episode_len+=1
+        plt.close('all')
 
 def get_metadata2plot(traj_feats):
     #target and agent r,theta update
@@ -647,8 +651,6 @@ def get_metadata2plot(traj_feats):
         for rotation_angle in range(num_rotation_angles):
             dict_key = "reachable_R=" + str(radius) + "_theta=" + \
                     str(int(rotation_angle * rotate_step_degrees)).zfill(3)
-            if radius<4:
-                print(dict_key,traj_feats.trajectory_feat_list[-1][dict_key])
             
             if traj_feats.trajectory_feat_list[-1][dict_key]:
                 metadata['reachability_r'].append(radius)
@@ -661,7 +663,7 @@ def get_metadata2plot(traj_feats):
 
 
 
-def plot_visualization(axs,fig,episode_id,frame, rnn, topdown_frame, metadata, hidden_unit_ids):
+def plot_visualization(axs,fig,episode_id,frame, rnn, topdown_frame, metadata, hidden_unit_ids,to_highlight):
     ax = axs[0][0]
     rnn_value_to_show = []
     units_to_show = []
@@ -676,6 +678,7 @@ def plot_visualization(axs,fig,episode_id,frame, rnn, topdown_frame, metadata, h
     #ax.axhline(y=0, color='k')
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
+    ax.set_facecolor('#e3fbe3')
     #ax.spines['bottom'].set_visible(False)
     
 
@@ -701,6 +704,8 @@ def plot_visualization(axs,fig,episode_id,frame, rnn, topdown_frame, metadata, h
     ax.plot(thetas,Rs,lw=1.5,color='k')
     ax.scatter(thetas[-1:],Rs[-1:],lw=1.5,color='g')
     ax.set_title("Agents Orientation wrt init",fontsize=8)
+    if 'agent_info' in to_highlight:
+        ax.set_facecolor('#e3fbe3')
     
     
     ax = fig.add_subplot(2, 3, 5, projection='polar')
@@ -712,6 +717,9 @@ def plot_visualization(axs,fig,episode_id,frame, rnn, topdown_frame, metadata, h
     ax.plot(thetas,Rs,lw=1.5,color='b')
     ax.scatter(thetas[-1:],Rs[-1:],lw=1.5,color='g')
     ax.set_title("Agents Orientation wrt target",fontsize=8)
+    if 'target_info' in to_highlight:
+        ax.set_facecolor('#e3fbe3')
+
     
     ax = fig.add_subplot(2, 3, 6, projection='polar')
     ax.clear()
@@ -728,6 +736,8 @@ def plot_visualization(axs,fig,episode_id,frame, rnn, topdown_frame, metadata, h
     ax.scatter(obstacles_thetas,obstacles_Rs,lw=1.0,color='r',label='obstacles')
     ax.set_title("Reachable positions",fontsize=8)
     ax.legend(loc="upper right",prop={'size': 6})
+    if 'reachability' in to_highlight:
+        ax.set_facecolor('#e3fbe3')
     
     title_string = episode_id
     fig.suptitle(title_string,y = 1,fontsize=10,fontweight='bold')
@@ -744,13 +754,18 @@ def main():
     parser.add_argument('-m','--arch',help='architecture : resnet or simple conv', default = 'simpleconv', type=str)
     parser.add_argument('-t','--task',help='task : objectnav or pointnav', default = 'objectnav', type=str)
     parser.add_argument('-id','--hidden_unit_ids',nargs="*", help='ids of the hidden unit', default = [0], type=int)
+    parser.add_argument('-hl','--highlight', help='ids of the hidden unit', default = 'agent_info', type=str)
+    
     
     args = vars(parser.parse_args())
 
     model_id = args['task'] + "_ithor_default_" + args['arch'] + "_pretrained"
 
-    save_dir = os.path.join('trajectory_metadata','val','interactive_hidden_unit_visualization')
-    visualize_hidden_unit(model_id, save_dir,'val',args['hidden_unit_ids'])
+    save_dir = os.path.join('interactive_hidden_unit_visualization','train',model_id,args['highlight'])
+    
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    visualize_hidden_unit(model_id, save_dir,'train',args['hidden_unit_ids'],[args['highlight']])
 
    
 
