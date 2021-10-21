@@ -303,6 +303,7 @@ class ResnetTensorObjectNavActorCritic_Ablation(ActorCriticModel[CategoricalDist
         )
         self.dropunits = dropunits
         self._hidden_size = hidden_size
+        self.rnn_mean_output = rnn_mean_output
         self.include_auxiliary_head = include_auxiliary_head
         if (
             rgb_resnet_preprocessor_uuid is None
@@ -332,7 +333,7 @@ class ResnetTensorObjectNavActorCritic_Ablation(ActorCriticModel[CategoricalDist
                 combiner_hidden_out_dims,
             )
         self.state_encoder = RNNStateEncoder(
-            self.goal_visual_encoder.output_dims, self._hidden_size,
+            self.goal_visual_encoder.output_dims, self._hidden_size
         )
         self.actor = LinearActorHead(self._hidden_size, action_space.n)
         self.critic = LinearCriticHead(self._hidden_size)
@@ -384,8 +385,10 @@ class ResnetTensorObjectNavActorCritic_Ablation(ActorCriticModel[CategoricalDist
     ) -> Tuple[ActorCriticOutput[DistributionType], Optional[Memory]]:
         x = self.goal_visual_encoder(observations)
         x, rnn_hidden_states = self.state_encoder(x, memory.tensor("rnn"), masks)
+        #print(rnn_hidden_states.shape)
+        #print("Length of units to drop is ",len(self.dropunits),x.shape)
         for unit in self.dropunits:
-           rnn_hidden_states[unit] = 0 
+            x[:,:,unit] = self.rnn_mean_output[unit] 
 
         return (
             ActorCriticOutput(
