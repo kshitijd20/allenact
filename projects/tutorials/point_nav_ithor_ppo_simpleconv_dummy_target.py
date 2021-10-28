@@ -31,48 +31,41 @@ from allenact.utils.experiment_utils import (
 from allenact_plugins.ithor_plugin.ithor_sensors import (
     RGBSensorThor,
     GoalObjectTypeThorSensor,
+    GPSCompassSensorIThor
 )
 from allenact_plugins.ithor_plugin.ithor_task_samplers import (
     ObjectNaviThorDatasetTaskSampler,
+    PointNaviThorDatasetTaskSampler
 )
-from allenact_plugins.ithor_plugin.ithor_tasks import ObjectNaviThorGridTask
-from projects.objectnav_baselines.models.object_nav_models import (
-    ResnetTensorObjectNavActorCritic,
+from allenact_plugins.ithor_plugin.ithor_tasks import ObjectNaviThorGridTask,PointNaviThorTask
+from projects.pointnav_baselines.models.point_nav_models import (
+    ResnetTensorPointNavActorCritic,
+    PointNavActorCriticSimpleConvRNN,
+    PointNavActorCriticSimpleConvRNNDummyTarget
 )
+# fmt: off
+try:
+    # Habitat may not be installed, just create a fake class here in that case
+    from allenact_plugins.habitat_plugin.habitat_sensors import TargetCoordinatesSensorHabitat
+except ImportError:
+    class TargetCoordinatesSensorHabitat:  #type:ignore
+        pass
+# fmt: on
 
-
-class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
+class PointNavThorPPOExperimentConfig(ExperimentConfig):
     """A simple object navigation experiment in THOR.
 
     Training with PPO.
     """
 
-    # A simple setting, train/valid/test are all the same single scene
-    # and we're looking for a single object
-    OBJECT_TYPES = sorted(
-        [
-            "AlarmClock",
-            "Apple",
-            "Book",
-            "Bowl",
-            "Box",
-            "Candle",
-            "GarbageCan",
-            "HousePlant",
-            "Laptop",
-            "SoapBottle",
-            "Television",
-            "Toaster",
-        ]
-    )
     train_path = os.path.join(
-        os.getcwd(), "datasets/ithor-objectnav/train/episodes", "*.json.gz"
+        os.getcwd(), "datasets/ithor-pointnav/train/episodes", "*.json.gz"
     )
     val_path = os.path.join(
-        os.getcwd(), "datasets/ithor-objectnav/val/episodes", "*.json.gz"
+        os.getcwd(), "datasets/ithor-pointnav/val/episodes", "*.json.gz"
     )
     test_path = os.path.join(
-        os.getcwd(), "datasets/ithor-objectnav/val/episodes", "*.json.gz"
+        os.getcwd(), "datasets/ithor-pointnav/val/episodes", "*.json.gz"
     )
 
     TRAIN_SCENES = [
@@ -96,24 +89,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
             use_resnet_normalization=True,
             uuid="rgb_lowres",
         ),
-        GoalObjectTypeThorSensor(object_types=OBJECT_TYPES),
-    ]
-
-    PREPROCESSORS = [
-        Builder(
-            ResNetPreprocessor,
-            {
-                "input_height": SCREEN_SIZE,
-                "input_width": SCREEN_SIZE,
-                "output_width": 7,
-                "output_height": 7,
-                "output_dims": 512,
-                "pool": False,
-                "torchvision_resnet_model": models.resnet18,
-                "input_uuids": ["rgb_lowres"],
-                "output_uuid": "rgb_resnet",
-            },
-        ),
+        GPSCompassSensorIThor(),
     ]
 
     ENV_ARGS = {
@@ -140,10 +116,11 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
     DEFAULT_TRAIN_GPU_IDS = tuple(range(torch.cuda.device_count()))
     DEFAULT_VALID_GPU_IDS = (torch.cuda.device_count() - 1,)
     DEFAULT_TEST_GPU_IDS = (torch.cuda.device_count() - 1,)
+    PREPROCESSORS = []
 
     @classmethod
     def tag(cls):
-        return "ObjectNaviThorPPOResnetGRU"
+        return "PointNaviThorPPOSimpleConvGRU"
 
     @classmethod
     def training_pipeline(cls, **kwargs):
@@ -167,9 +144,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
             update_repeats=update_repeats,
             max_grad_norm=max_grad_norm,
             num_steps=num_steps,
-            named_losses={
-                "ppo_loss": PPO(clip_decay=LinearDecay(ppo_steps), **PPOConfig),
-            },
+            named_losses={"ppo_loss": PPO(**PPOConfig)},
             gamma=gamma,
             use_gae=use_gae,
             gae_lambda=gae_lambda,
@@ -201,7 +176,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
             nprocesses = 1
             gpu_ids = [] if not torch.cuda.is_available() else cls.DEFAULT_VALID_GPU_IDS
         elif mode == "test":
-            nprocesses = 40
+            nprocesses = 1
             gpu_ids = [] if not torch.cuda.is_available() else cls.DEFAULT_TEST_GPU_IDS
         else:
             raise NotImplementedError("mode must be 'train', 'valid', or 'test'.")
@@ -230,28 +205,37 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
 
     @classmethod
     def create_model(cls, **kwargs) -> nn.Module:
-        has_rgb = any(isinstance(s, RGBSensor) for s in cls.SENSORS)
-        has_depth = any(isinstance(s, DepthSensor) for s in cls.SENSORS)
+        rgb_uuid = next((s.uuid for s in cls.SENSORS if isinstance(s, RGBSensor)), None)
+        depth_uuid = next(
+            (s.uuid for s in cls.SENSORS if isinstance(s, DepthSensor)), None
+        )
         goal_sensor_uuid = next(
-            (s.uuid for s in cls.SENSORS if isinstance(s, GoalObjectTypeThorSensor)),
+            (
+                s.uuid
+                for s in cls.SENSORS
+                if isinstance(
+                    s, (GPSCompassSensorIThor, TargetCoordinatesSensorHabitat)
+                )
+            ),
             None,
         )
 
-        return ResnetTensorObjectNavActorCritic(
-            action_space=gym.spaces.Discrete(
-                len(ObjectNaviThorGridTask.class_action_names())
-            ),
+        return PointNavActorCriticSimpleConvRNNDummyTarget(
+            action_space=gym.spaces.Discrete(len(PointNaviThorTask.class_action_names())),
             observation_space=kwargs["sensor_preprocessor_graph"].observation_spaces,
+            rgb_uuid=rgb_uuid,
+            depth_uuid=depth_uuid,
             goal_sensor_uuid=goal_sensor_uuid,
-            rgb_resnet_preprocessor_uuid="rgb_resnet" if has_rgb else None,
-            depth_resnet_preprocessor_uuid="depth_resnet" if has_depth else None,
             hidden_size=512,
-            goal_dims=32,
+            embed_coordinates=False,
+            coordinate_dims=2,
+            num_rnn_layers=1,
+            rnn_type="GRU",
         )
 
     @classmethod
     def make_sampler_fn(cls, **kwargs) -> TaskSampler:
-        return ObjectNaviThorDatasetTaskSampler(**kwargs)
+        return PointNaviThorDatasetTaskSampler(**kwargs)
 
     @staticmethod
     def _partition_inds(n: int, num_parts: int):
@@ -285,7 +269,6 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
 
         return {
             "scenes": scenes[inds[process_ind] : inds[process_ind + 1]],
-            "object_types": self.OBJECT_TYPES,
             "env_args": self.ENV_ARGS,
             "max_steps": self.MAX_STEPS,
             "sensors": self.SENSORS,
@@ -313,7 +296,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
             deterministic_cudnn=deterministic_cudnn,
         )
         res["scene_directory"] = os.path.join(
-            os.getcwd(), "datasets/ithor-objectnav/train/episodes"
+            os.getcwd(), "datasets/ithor-pointnav/train/"
         )
         res["loop_dataset"] = True
         res["scene_period"] = "manual"
@@ -343,7 +326,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
         )
         res["loop_dataset"] = False
         res["scene_directory"] = os.path.join(
-            os.getcwd(), "datasets/ithor-objectnav/val/episodes"
+            os.getcwd(), "datasets/ithor-pointnav/val/"
         )
         res["env_args"] = {}
         res["env_args"].update(self.ENV_ARGS)
@@ -370,7 +353,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
             deterministic_cudnn=deterministic_cudnn,
         )
         res["scene_directory"] = os.path.join(
-            os.getcwd(), "datasets/ithor-objectnav/val/episodes"
+            os.getcwd(), "datasets/ithor-pointnav/val/"
         )
         res["loop_dataset"] = False
         res["env_args"] = {}

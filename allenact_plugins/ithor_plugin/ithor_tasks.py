@@ -253,8 +253,16 @@ class ObjectNaviThorGridTask(Task[IThorEnvironment]):
         if not self.is_done():
             return {}
         else:
+            dist2tget = self.env.distance_to_object_type(self.task_info["object_type"])
+            spl = spl_metric(
+                success=self._success,
+                optimal_distance=self.optimal_distance,
+                travelled_distance=self.travelled_distance,
+            )
+
             return {
                 "success": self._success,
+                "spl": 0 if spl is None else spl,
                 **super(ObjectNaviThorGridTask, self).metrics(),
             }
 

@@ -147,7 +147,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
 
     @classmethod
     def tag(cls):
-        return "ObjectNaviThorPPOResnetGRU_target_ablation_10"
+        return "ObjectNaviThorPPOResnetGRU_target_ablation_50"
 
     @classmethod
     def training_pipeline(cls, **kwargs):
@@ -205,8 +205,8 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
             nprocesses = 1
             gpu_ids = [] if not torch.cuda.is_available() else cls.DEFAULT_VALID_GPU_IDS
         elif mode == "test":
-            nprocesses = 1
-            gpu_ids = [] if not torch.cuda.is_available() else cls.DEFAULT_TEST_GPU_IDS
+            nprocesses = 40
+            gpu_ids = 3 #[] if not torch.cuda.is_available() else cls.DEFAULT_TEST_GPU_IDS
         else:
             raise NotImplementedError("mode must be 'train', 'valid', or 'test'.")
 
@@ -244,7 +244,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
         with open('ablation_data.pkl', 'rb') as handle:
             ablation_data = pickle.load(handle)
         unit_means = ablation_data['unit_means']
-        target_units = ablation_data['target_visibility'][:10]
+        target_units = ablation_data['target_visibility'][:50]
 
 
         return ResnetTensorObjectNavActorCritic_Ablation(

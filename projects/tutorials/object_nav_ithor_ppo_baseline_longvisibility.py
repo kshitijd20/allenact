@@ -121,7 +121,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
         "player_screen_width": CAMERA_WIDTH,
         "quality": "Very Low",
         "rotate_step_degrees": 30,
-        "visibility_distance": 1.0,
+        "visibility_distance": 7.0,
         "grid_size": 0.25,
         "snap_to_grid": False,
     }
@@ -143,7 +143,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
 
     @classmethod
     def tag(cls):
-        return "ObjectNaviThorPPOResnetGRU"
+        return "ObjectNaviThorPPOResnetGRU_longvisibility"
 
     @classmethod
     def training_pipeline(cls, **kwargs):
@@ -201,7 +201,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
             nprocesses = 1
             gpu_ids = [] if not torch.cuda.is_available() else cls.DEFAULT_VALID_GPU_IDS
         elif mode == "test":
-            nprocesses = 40
+            nprocesses = 1
             gpu_ids = [] if not torch.cuda.is_available() else cls.DEFAULT_TEST_GPU_IDS
         else:
             raise NotImplementedError("mode must be 'train', 'valid', or 'test'.")

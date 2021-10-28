@@ -5,6 +5,7 @@ import os
 import gym
 import numpy as np
 import torch
+import pickle
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import LambdaLR
@@ -37,8 +38,11 @@ from allenact_plugins.ithor_plugin.ithor_task_samplers import (
 )
 from allenact_plugins.ithor_plugin.ithor_tasks import ObjectNaviThorGridTask
 from projects.objectnav_baselines.models.object_nav_models import (
-    ResnetTensorObjectNavActorCritic,
+    ResnetTensorObjectNavActorCritic_Ablation,
 )
+
+
+import random
 
 
 class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
@@ -143,7 +147,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
 
     @classmethod
     def tag(cls):
-        return "ObjectNaviThorPPOResnetGRU"
+        return "ObjectNaviThorPPOResnetGRU_targetlongrange_ablation_20"
 
     @classmethod
     def training_pipeline(cls, **kwargs):
@@ -202,7 +206,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
             gpu_ids = [] if not torch.cuda.is_available() else cls.DEFAULT_VALID_GPU_IDS
         elif mode == "test":
             nprocesses = 40
-            gpu_ids = [] if not torch.cuda.is_available() else cls.DEFAULT_TEST_GPU_IDS
+            gpu_ids = 1 #[] if not torch.cuda.is_available() else cls.DEFAULT_TEST_GPU_IDS
         else:
             raise NotImplementedError("mode must be 'train', 'valid', or 'test'.")
 
@@ -237,7 +241,14 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
             None,
         )
 
-        return ResnetTensorObjectNavActorCritic(
+        with open('ablation_data_with_longrange_visibility.pkl', 'rb') as handle:
+            ablation_data = pickle.load(handle)
+        unit_means = ablation_data['unit_means']
+        target_units = ablation_data['target_visibility_long_range'][:20]
+        print("Length of removded units , " ,target_units)
+
+
+        return ResnetTensorObjectNavActorCritic_Ablation(
             action_space=gym.spaces.Discrete(
                 len(ObjectNaviThorGridTask.class_action_names())
             ),
@@ -247,6 +258,8 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
             depth_resnet_preprocessor_uuid="depth_resnet" if has_depth else None,
             hidden_size=512,
             goal_dims=32,
+            dropunits = target_units,
+            rnn_mean_output = unit_means
         )
 
     @classmethod

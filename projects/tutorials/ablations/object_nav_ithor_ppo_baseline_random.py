@@ -147,7 +147,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
 
     @classmethod
     def tag(cls):
-        return "ObjectNaviThorPPOResnetGRU_random_ablation_10"
+        return "ObjectNaviThorPPOResnetGRU_random_ablation_50"
 
     @classmethod
     def training_pipeline(cls, **kwargs):
@@ -205,8 +205,9 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
             nprocesses = 1
             gpu_ids = [] if not torch.cuda.is_available() else cls.DEFAULT_VALID_GPU_IDS
         elif mode == "test":
-            nprocesses = 1
+            nprocesses = 40
             gpu_ids = [] if not torch.cuda.is_available() else cls.DEFAULT_TEST_GPU_IDS
+            print("gpu ids are ", gpu_ids)
         else:
             raise NotImplementedError("mode must be 'train', 'valid', or 'test'.")
 
@@ -242,7 +243,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
         )
         with open('ablation_data.pkl', 'rb') as handle:
                 ablation_data = pickle.load(handle)
-        random_units = random.sample(list(range(512)), 10)
+        random_units = random.sample(list(range(512)), 50)
         unit_means = ablation_data['unit_means']
         return ResnetTensorObjectNavActorCritic_Ablation(
             action_space=gym.spaces.Discrete(
