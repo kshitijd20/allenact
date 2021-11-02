@@ -147,7 +147,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
 
     @classmethod
     def tag(cls):
-        return "ObjectNaviThorPPOResnetGRU_target_ablation_50"
+        return "ObjectNaviThorPPOResnetGRU_target_ablation_30"
 
     @classmethod
     def training_pipeline(cls, **kwargs):
@@ -244,7 +244,7 @@ class ObjectNavThorPPOExperimentConfig(ExperimentConfig):
         with open('ablation_data.pkl', 'rb') as handle:
             ablation_data = pickle.load(handle)
         unit_means = ablation_data['unit_means']
-        target_units = ablation_data['target_visibility'][:50]
+        target_units = ablation_data['target_visibility'][:30]
 
 
         return ResnetTensorObjectNavActorCritic_Ablation(

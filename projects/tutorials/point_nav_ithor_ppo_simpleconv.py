@@ -175,8 +175,8 @@ class PointNavThorPPOExperimentConfig(ExperimentConfig):
             nprocesses = 1
             gpu_ids = [] if not torch.cuda.is_available() else cls.DEFAULT_VALID_GPU_IDS
         elif mode == "test":
-            nprocesses = 1
-            gpu_ids = [] if not torch.cuda.is_available() else cls.DEFAULT_TEST_GPU_IDS
+            nprocesses = 40
+            gpu_ids = 0# if not torch.cuda.is_available() else cls.DEFAULT_TEST_GPU_IDS
         else:
             raise NotImplementedError("mode must be 'train', 'valid', or 'test'.")
 

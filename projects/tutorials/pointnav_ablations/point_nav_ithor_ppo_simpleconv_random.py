@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import LambdaLR
 from torchvision import models
-
+import pickle
 from allenact.base_abstractions.preprocessor import SensorPreprocessorGraph
 
 from allenact.embodiedai.preprocessors.resnet import ResNetPreprocessor
@@ -40,9 +40,11 @@ from allenact_plugins.ithor_plugin.ithor_task_samplers import (
 from allenact_plugins.ithor_plugin.ithor_tasks import ObjectNaviThorGridTask,PointNaviThorTask
 from projects.pointnav_baselines.models.point_nav_models import (
     ResnetTensorPointNavActorCritic,
-    PointNavActorCriticSimpleConvRNN,
-    PointNavActorCriticSimpleConvRNNDummyImage
+    PointNavActorCriticSimpleConvRNN_Ablation
 )
+import random
+
+
 # fmt: off
 try:
     # Habitat may not be installed, just create a fake class here in that case
@@ -120,7 +122,7 @@ class PointNavThorPPOExperimentConfig(ExperimentConfig):
 
     @classmethod
     def tag(cls):
-        return "PointNaviThorPPOSimpleConvGRU_dummyimage"
+        return "PointNaviThorPPOSimpleConvGRU_random_ablation_40"
 
     @classmethod
     def training_pipeline(cls, **kwargs):
@@ -176,8 +178,8 @@ class PointNavThorPPOExperimentConfig(ExperimentConfig):
             nprocesses = 1
             gpu_ids = [] if not torch.cuda.is_available() else cls.DEFAULT_VALID_GPU_IDS
         elif mode == "test":
-            nprocesses = 1
-            gpu_ids = [] if not torch.cuda.is_available() else cls.DEFAULT_TEST_GPU_IDS
+            nprocesses = 40
+            gpu_ids = 2 #if not torch.cuda.is_available() else cls.DEFAULT_TEST_GPU_IDS
         else:
             raise NotImplementedError("mode must be 'train', 'valid', or 'test'.")
 
@@ -219,8 +221,13 @@ class PointNavThorPPOExperimentConfig(ExperimentConfig):
             ),
             None,
         )
+        with open('ablation_data_pointnav.pkl', 'rb') as handle:
+            ablation_data = pickle.load(handle)
+        unit_means = ablation_data['unit_means']
+        random_units = random.sample(list(range(512)), 40)
+        print("Length of random units", len(random_units))
 
-        return PointNavActorCriticSimpleConvRNNDummyImage(
+        return PointNavActorCriticSimpleConvRNN_Ablation(
             action_space=gym.spaces.Discrete(len(PointNaviThorTask.class_action_names())),
             observation_space=kwargs["sensor_preprocessor_graph"].observation_spaces,
             rgb_uuid=rgb_uuid,
@@ -231,6 +238,8 @@ class PointNavThorPPOExperimentConfig(ExperimentConfig):
             coordinate_dims=2,
             num_rnn_layers=1,
             rnn_type="GRU",
+            dropunits = random_units,
+            rnn_mean_output = unit_means
         )
 
     @classmethod

@@ -128,7 +128,7 @@ class PointNavThorPPOExperimentConfig(ExperimentConfig):
 
     @classmethod
     def tag(cls):
-        return "PointNaviThorPPOResnetGRU"
+        return "PointNaviThorPPOResnetGRU_dummyimage"
 
     @classmethod
     def training_pipeline(cls, **kwargs):
